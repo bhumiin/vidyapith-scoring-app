@@ -4,7 +4,7 @@
  */
 
 const SuperJudgeView = {
-    selectedGroupId: 'all',
+    selectedGradeId: null,
     selectedGroupIdForManagement: null,
     currentEditingStudent: null,
     currentEditingJudge: null,
@@ -27,21 +27,7 @@ const SuperJudgeView = {
             });
         });
 
-        // Group filter
-        document.getElementById('group-filter').addEventListener('change', (e) => {
-            this.selectedGroupId = e.target.value;
-            this.renderStudents().catch(error => console.error('Error rendering students:', error));
-        });
-
-        // Student search
-        document.getElementById('superjudge-student-search').addEventListener('input', (e) => {
-            this.filterStudents(e.target.value).catch(error => console.error('Error filtering students:', error));
-        });
-
         // Group management
-        document.getElementById('superjudge-add-group').addEventListener('click', () => {
-            this.addGroup().catch(error => console.error('Error adding group:', error));
-        });
         // Event delegation for group list items
         document.getElementById('superjudge-groups-list-container').addEventListener('click', (e) => {
             const groupItem = e.target.closest('.group-list-item');
@@ -50,20 +36,20 @@ const SuperJudgeView = {
                 this.onGroupSelectionChange(groupId).catch(error => console.error('Error on group selection:', error));
             }
         });
-        document.getElementById('superjudge-group-student-search').addEventListener('input', (e) => {
-            this.onStudentSearchChange(e.target.value).catch(error => console.error('Error on student search:', error));
+        document.getElementById('superjudge-group-judge-search').addEventListener('input', (e) => {
+            this.onJudgeSearchChange(e.target.value).catch(error => console.error('Error on judge search:', error));
         });
-        document.getElementById('superjudge-assign-students-btn').addEventListener('click', () => {
-            this.assignSelectedStudentsToGroup(this.selectedGroupIdForManagement).catch(error => console.error('Error assigning students:', error));
+        document.getElementById('superjudge-assign-judges-btn').addEventListener('click', () => {
+            this.assignSelectedJudgesToGroup(this.selectedGroupIdForManagement).catch(error => console.error('Error assigning judges:', error));
         });
-        document.getElementById('superjudge-select-all-students').addEventListener('change', (e) => {
-            const checkboxes = document.querySelectorAll('#superjudge-student-checkbox-list .student-checkbox:not(:disabled)');
+        document.getElementById('superjudge-select-all-judges').addEventListener('change', (e) => {
+            const checkboxes = document.querySelectorAll('#superjudge-judge-checkbox-list .judge-checkbox:not(:disabled)');
             checkboxes.forEach(cb => cb.checked = e.target.checked);
         });
-        // Event delegation for student checkboxes to update select all state
-        document.getElementById('superjudge-student-checkbox-list').addEventListener('change', (e) => {
-            if (e.target.classList.contains('student-checkbox')) {
-                this.updateSelectAllState();
+        // Event delegation for judge checkboxes to update select all state
+        document.getElementById('superjudge-judge-checkbox-list').addEventListener('change', (e) => {
+            if (e.target.classList.contains('judge-checkbox')) {
+                this.updateSelectAllJudgesState();
             }
         });
 
@@ -92,6 +78,7 @@ const SuperJudgeView = {
         document.getElementById(`${tabName}-tab`).classList.add('active');
 
         if (tabName === 'scores') {
+            await this.renderGradeButtons();
             await this.renderStudents();
         } else if (tabName === 'group-management') {
             await this.renderGroups();
@@ -99,50 +86,74 @@ const SuperJudgeView = {
     },
 
     async render() {
-        await this.renderGroupFilter();
+        // Display super judge name
+        const session = AuthManager.getSession();
+        if (session && session.name) {
+            document.getElementById('superjudge-name-display').textContent = session.name;
+        }
+
+        // Hide grades display for super judge
+        document.getElementById('superjudge-groups-info').style.display = 'none';
+
+        await this.renderGradeButtons();
         await this.renderStudents();
         await this.renderGroups();
     },
 
-    async renderGroupFilter() {
+    async renderGradeButtons() {
         try {
             const groups = await DataManager.getGroups();
-            const select = document.getElementById('group-filter');
-            select.innerHTML = '<option value="all">All Grades</option>' +
-                groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+            const container = document.getElementById('grade-buttons-container');
+            
+            if (!groups || groups.length === 0) {
+                container.innerHTML = '<p class="empty-message">No grades available.</p>';
+                return;
+            }
+
+            // Sort groups in ascending order by name
+            const sortedGroups = [...groups].sort((a, b) => {
+                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+            const buttonsHTML = sortedGroups.map(group => {
+                const isActive = this.selectedGradeId === group.id;
+                return `
+                    <button 
+                        class="grade-button ${isActive ? 'active' : ''}" 
+                        data-grade-id="${group.id}"
+                        onclick="SuperJudgeView.selectGrade('${group.id}')"
+                    >
+                        Grade ${group.name}
+                    </button>
+                `;
+            }).join('');
+
+            container.innerHTML = `<div class="grade-buttons-grid">${buttonsHTML}</div>`;
         } catch (error) {
-            console.error('Error rendering group filter:', error);
+            console.error('Error rendering grade buttons:', error);
         }
     },
 
-    async filterStudents(searchTerm) {
-        try {
-            const students = await DataManager.getStudents();
-            const filtered = students.filter(s => 
-                s.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            await this.renderStudentsList(filtered);
-        } catch (error) {
-            console.error('Error filtering students:', error);
-        }
+    async selectGrade(gradeId) {
+        this.selectedGradeId = gradeId;
+        await this.renderGradeButtons();
+        await this.renderStudents();
     },
 
     async renderStudents() {
         try {
-            let students = await DataManager.getStudents();
+            const container = document.getElementById('superjudge-students-list');
             
-            // Filter by group if selected
-            if (this.selectedGroupId !== 'all') {
-                students = students.filter(s => s.group_id === this.selectedGroupId);
+            // If no grade is selected, show empty message
+            if (!this.selectedGradeId) {
+                container.innerHTML = '<p class="empty-message">Select a grade to view students</p>';
+                return;
             }
 
-            // Filter by search term
-            const searchTerm = document.getElementById('superjudge-student-search').value.toLowerCase();
-            if (searchTerm) {
-                students = students.filter(s => 
-                    s.name.toLowerCase().includes(searchTerm)
-                );
-            }
+            let students = await DataManager.getStudents();
+            
+            // Filter by selected grade
+            students = students.filter(s => s.group_id === this.selectedGradeId);
 
             await this.renderStudentsList(students);
         } catch (error) {
@@ -355,47 +366,58 @@ const SuperJudgeView = {
 
     async renderGroupAssignmentUI() {
         try {
-            const groups = await DataManager.getGroups();
-            const students = await DataManager.getStudents();
+            const groups = await DataManager.getGroups() || [];
             const groupsListContainer = document.getElementById('superjudge-groups-list-container');
+            
+            // Sort groups in ascending order by name
+            const sortedGroups = [...groups].sort((a, b) => {
+                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            });
             
             // Store currently selected group ID
             const currentSelectedGroupId = this.selectedGroupIdForManagement || null;
             
+            // Fetch judge counts for each group
+            const groupsWithJudgeCounts = await Promise.all(sortedGroups.map(async (group) => {
+                const judgeIds = await SupabaseService.getGroupJudges(group.id);
+                return {
+                    ...group,
+                    judgeCount: judgeIds.length
+                };
+            }));
+            
             // Render groups list
-            if (groups.length === 0) {
+            if (groupsWithJudgeCounts.length === 0) {
                 groupsListContainer.innerHTML = '<p class="empty-message">No grades created yet.</p>';
             } else {
-                const groupItems = await Promise.all(groups.map(async group => {
-                    const groupStudents = students.filter(s => s.group_id === group.id);
+                groupsListContainer.innerHTML = groupsWithJudgeCounts.map(group => {
                     const isSelected = currentSelectedGroupId === group.id;
                     return `
                         <div class="group-list-item ${isSelected ? 'selected' : ''}" data-group-id="${group.id}">
                             <div class="group-list-item-content">
                                 <strong>${group.name}</strong>
-                                <span class="group-student-count">${groupStudents.length} students</span>
+                                <span class="group-student-count">${group.judgeCount} judges</span>
                             </div>
                             <button class="btn btn-danger btn-sm delete-group-btn" onclick="event.stopPropagation(); SuperJudgeView.deleteGroup('${group.id}')">Delete</button>
                         </div>
                     `;
-                }));
-                groupsListContainer.innerHTML = groupItems.join('');
+                }).join('');
             }
             
-            // Render selected group's students if a group is selected
+            // Render selected group's judges if a group is selected
             if (currentSelectedGroupId) {
-                await this.renderSelectedGroupStudents(currentSelectedGroupId);
+                await this.renderSelectedGroupJudges(currentSelectedGroupId);
             } else {
                 document.getElementById('superjudge-selected-group-info').style.display = 'none';
                 document.getElementById('superjudge-no-group-selected').style.display = 'block';
             }
             
-            // Render student checkboxes for adding
-            const searchTerm = document.getElementById('superjudge-group-student-search')?.value || '';
-            await this.renderStudentCheckboxes(currentSelectedGroupId, searchTerm);
+            // Render judge checkboxes for adding
+            const searchTerm = document.getElementById('superjudge-group-judge-search')?.value || '';
+            await this.renderJudgeCheckboxes(currentSelectedGroupId, searchTerm);
             
             // Update assign button state
-            const assignBtn = document.getElementById('superjudge-assign-students-btn');
+            const assignBtn = document.getElementById('superjudge-assign-judges-btn');
             if (assignBtn) {
                 assignBtn.disabled = !currentSelectedGroupId;
             }
@@ -404,83 +426,83 @@ const SuperJudgeView = {
         }
     },
 
-    async renderSelectedGroupStudents(groupId) {
+    async renderSelectedGroupJudges(groupId) {
         try {
             const groups = await DataManager.getGroups();
             const group = groups.find(g => g.id === groupId);
             if (!group) return;
             
-            const students = await DataManager.getStudents();
-            const groupStudents = students.filter(s => s.group_id === groupId);
+            // Fetch judge IDs assigned to this group
+            const judgeIds = await SupabaseService.getGroupJudges(groupId);
+            const allJudges = await DataManager.getJudges() || [];
+            const groupJudges = allJudges.filter(j => judgeIds.includes(j.id));
             
             const selectedGroupInfo = document.getElementById('superjudge-selected-group-info');
             const selectedGroupName = document.getElementById('superjudge-selected-group-name');
-            const groupStudentsList = document.getElementById('superjudge-group-students-list');
+            const groupJudgesList = document.getElementById('superjudge-group-judges-list');
             const noGroupSelected = document.getElementById('superjudge-no-group-selected');
             
             selectedGroupInfo.style.display = 'block';
             noGroupSelected.style.display = 'none';
             selectedGroupName.textContent = group.name;
             
-            if (groupStudents.length === 0) {
-                groupStudentsList.innerHTML = '<p class="empty-message">No students assigned to this grade.</p>';
+            if (groupJudges.length === 0) {
+                groupJudgesList.innerHTML = '<p class="empty-message">No judges assigned to this grade.</p>';
             } else {
-                groupStudentsList.innerHTML = groupStudents.map(student => `
+                groupJudgesList.innerHTML = groupJudges.map(judge => `
                     <div class="group-student-item">
-                        <span class="student-name">${student.name}</span>
-                        <button class="btn btn-danger btn-sm" onclick="SuperJudgeView.removeStudentFromGroup('${student.id}', '${groupId}')">Remove</button>
+                        <span class="student-name">${judge.name}</span>
+                        <button class="btn btn-danger btn-sm" onclick="SuperJudgeView.removeJudgeFromGroup('${judge.id}', '${groupId}')">Remove</button>
                     </div>
                 `).join('');
             }
         } catch (error) {
-            console.error('Error rendering selected group students:', error);
+            console.error('Error rendering selected group judges:', error);
         }
     },
 
-    async renderStudentCheckboxes(selectedGroupId, searchTerm) {
+    async renderJudgeCheckboxes(selectedGroupId, searchTerm) {
         try {
-            const students = await DataManager.getStudents();
-            const groups = await DataManager.getGroups();
-            const container = document.getElementById('superjudge-student-checkbox-list');
+            const judges = await DataManager.getJudges() || [];
+            const container = document.getElementById('superjudge-judge-checkbox-list');
             if (!container) return;
             
-            // Filter students by search term
-            const filteredStudents = students.filter(student => 
-                student.name.toLowerCase().includes(searchTerm.toLowerCase())
+            // Get selected group's judge IDs from database
+            const groupJudgeIds = selectedGroupId ? await SupabaseService.getGroupJudges(selectedGroupId) : [];
+            
+            // Filter judges by search term
+            const filteredJudges = judges.filter(judge => 
+                judge.name.toLowerCase().includes(searchTerm.toLowerCase())
             );
             
-            if (filteredStudents.length === 0) {
-                container.innerHTML = '<p class="empty-message">No students found.</p>';
+            if (filteredJudges.length === 0) {
+                container.innerHTML = '<p class="empty-message">No judges found.</p>';
                 return;
             }
             
             // Render checkboxes
-            container.innerHTML = filteredStudents.map(student => {
-                const studentGroup = groups.find(g => g.id === student.group_id);
-                const groupName = studentGroup ? studentGroup.name : 'Unassigned';
-                const isChecked = selectedGroupId && student.group_id === selectedGroupId;
-                const isInOtherGroup = student.group_id && student.group_id !== selectedGroupId;
-            
+            container.innerHTML = filteredJudges.map(judge => {
+                const isChecked = selectedGroupId && groupJudgeIds.includes(judge.id);
+                
                 return `
-                    <div class="student-checkbox-item ${isInOtherGroup ? 'in-other-group' : ''}">
+                    <div class="student-checkbox-item">
                         <label>
                             <input type="checkbox" 
-                                   value="${student.id}" 
-                                   class="student-checkbox"
+                                   value="${judge.id}" 
+                                   class="judge-checkbox"
                                    ${isChecked ? 'checked' : ''}
                                    ${!selectedGroupId ? 'disabled' : ''}>
-                            <span class="student-name">${student.name}</span>
-                            <span class="badge ${student.group_id ? 'badge-info' : 'badge-warning'}">${groupName}</span>
+                            <span class="student-name">${judge.name}</span>
                         </label>
                     </div>
                 `;
             }).join('');
             
             // Update select all checkbox
-            const selectAllCheckbox = document.getElementById('superjudge-select-all-students');
-            if (selectAllCheckbox && selectedGroupId && filteredStudents.length > 0) {
-                const allChecked = filteredStudents.every(s => s.group_id === selectedGroupId);
-                const someChecked = filteredStudents.some(s => s.group_id === selectedGroupId);
+            const selectAllCheckbox = document.getElementById('superjudge-select-all-judges');
+            if (selectAllCheckbox && selectedGroupId && filteredJudges.length > 0) {
+                const allChecked = filteredJudges.every(j => groupJudgeIds.includes(j.id));
+                const someChecked = filteredJudges.some(j => groupJudgeIds.includes(j.id));
                 selectAllCheckbox.checked = allChecked;
                 selectAllCheckbox.indeterminate = someChecked && !allChecked;
             } else if (selectAllCheckbox) {
@@ -488,87 +510,98 @@ const SuperJudgeView = {
                 selectAllCheckbox.indeterminate = false;
             }
         } catch (error) {
-            console.error('Error rendering student checkboxes:', error);
+            console.error('Error rendering judge checkboxes:', error);
         }
     },
 
     async onGroupSelectionChange(groupId) {
         this.selectedGroupIdForManagement = groupId;
-        const searchTerm = document.getElementById('superjudge-group-student-search')?.value || '';
-        await this.renderStudentCheckboxes(groupId, searchTerm);
-        await this.renderSelectedGroupStudents(groupId);
+        const searchTerm = document.getElementById('superjudge-group-judge-search')?.value || '';
+        await this.renderJudgeCheckboxes(groupId, searchTerm);
+        await this.renderSelectedGroupJudges(groupId);
         
         // Update assign button state
-        const assignBtn = document.getElementById('superjudge-assign-students-btn');
+        const assignBtn = document.getElementById('superjudge-assign-judges-btn');
         if (assignBtn) {
             assignBtn.disabled = !groupId;
         }
         
         // Update groups list to show selected state
-        const groups = await DataManager.getGroups();
-        const students = await DataManager.getStudents();
+        const groups = await DataManager.getGroups() || [];
+        // Sort groups in ascending order by name
+        const sortedGroups = [...groups].sort((a, b) => {
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        
+        // Fetch judge counts for each group
+        const groupsWithJudgeCounts = await Promise.all(sortedGroups.map(async (group) => {
+            const judgeIds = await SupabaseService.getGroupJudges(group.id);
+            return {
+                ...group,
+                judgeCount: judgeIds.length
+            };
+        }));
+        
         const groupsListContainer = document.getElementById('superjudge-groups-list-container');
-        if (groups.length > 0 && groupsListContainer) {
-            const groupItems = groups.map(group => {
-                const groupStudents = students.filter(s => s.group_id === group.id);
+        if (groupsWithJudgeCounts.length > 0) {
+            groupsListContainer.innerHTML = groupsWithJudgeCounts.map(group => {
                 const isSelected = this.selectedGroupIdForManagement === group.id;
                 return `
                     <div class="group-list-item ${isSelected ? 'selected' : ''}" data-group-id="${group.id}">
                         <div class="group-list-item-content">
                             <strong>${group.name}</strong>
-                            <span class="group-student-count">${groupStudents.length} students</span>
+                            <span class="group-student-count">${group.judgeCount} judges</span>
                         </div>
                         <button class="btn btn-danger btn-sm delete-group-btn" onclick="event.stopPropagation(); SuperJudgeView.deleteGroup('${group.id}')">Delete</button>
                     </div>
                 `;
-            });
-            groupsListContainer.innerHTML = groupItems.join('');
+            }).join('');
         }
     },
 
-    async onStudentSearchChange(searchTerm) {
+    async onJudgeSearchChange(searchTerm) {
         const groupId = this.selectedGroupIdForManagement;
-        await this.renderStudentCheckboxes(groupId, searchTerm);
+        await this.renderJudgeCheckboxes(groupId, searchTerm);
     },
 
-    async assignSelectedStudentsToGroup(groupId) {
+    async assignSelectedJudgesToGroup(groupId) {
         if (!groupId) {
             alert('Please select a grade first');
             return;
         }
         
-        const checkboxes = document.querySelectorAll('#superjudge-student-checkbox-list .student-checkbox:checked');
+        const checkboxes = document.querySelectorAll('#superjudge-judge-checkbox-list .judge-checkbox:checked');
         if (checkboxes.length === 0) {
-            alert('Please select at least one student');
+            alert('Please select at least one judge');
             return;
         }
         
-        const studentIds = Array.from(checkboxes).map(cb => cb.value);
+        const judgeIds = Array.from(checkboxes).map(cb => cb.value);
         
         try {
-            // Assign each selected student to the group
-            for (const studentId of studentIds) {
-                await GroupManager.assignStudentToGroup(studentId, groupId);
+            // Assign each selected judge to the group
+            for (const judgeId of judgeIds) {
+                await GroupManager.assignJudgeToGroup(judgeId, groupId);
             }
             
             // Re-render the UI
-            const searchTerm = document.getElementById('superjudge-group-student-search')?.value || '';
-            await this.renderStudentCheckboxes(groupId, searchTerm);
-            await this.renderSelectedGroupStudents(groupId);
+            const searchTerm = document.getElementById('superjudge-group-judge-search')?.value || '';
+            await this.renderJudgeCheckboxes(groupId, searchTerm);
+            await this.renderSelectedGroupJudges(groupId);
             await this.renderGroupAssignmentUI();
         } catch (error) {
-            console.error('Error assigning students to group:', error);
-            alert('Error assigning students. Please try again.');
+            console.error('Error assigning judges to group:', error);
+            alert('Error assigning judges. Please try again.');
         }
     },
 
-    updateSelectAllState() {
-        const checkboxes = document.querySelectorAll('#superjudge-student-checkbox-list .student-checkbox:not(:disabled)');
+    updateSelectAllJudgesState() {
+        const checkboxes = document.querySelectorAll('#superjudge-judge-checkbox-list .judge-checkbox:not(:disabled)');
         if (checkboxes.length === 0) return;
         
         const allChecked = Array.from(checkboxes).every(cb => cb.checked);
         const someChecked = Array.from(checkboxes).some(cb => cb.checked);
-        const selectAllCheckbox = document.getElementById('superjudge-select-all-students');
+        const selectAllCheckbox = document.getElementById('superjudge-select-all-judges');
         
         if (selectAllCheckbox) {
             selectAllCheckbox.checked = allChecked;
@@ -587,7 +620,7 @@ const SuperJudgeView = {
             await GroupManager.createGroup(name);
             document.getElementById('superjudge-group-name').value = '';
             await this.renderGroups();
-            await this.renderGroupFilter();
+            await this.renderGradeButtons();
         } catch (error) {
             console.error('Error adding group:', error);
             alert('Error creating group. Please try again.');
@@ -619,21 +652,21 @@ const SuperJudgeView = {
         this.renderGroups();
     },
 
-    async removeStudentFromGroup(studentId, groupId) {
+    async removeJudgeFromGroup(judgeId, groupId) {
         try {
-            await GroupManager.removeStudentFromGroup(studentId);
-            // Refresh the selected group's students list
+            await GroupManager.removeJudgeFromGroup(judgeId, groupId);
+            // Refresh the selected group's judges list
             if (this.selectedGroupIdForManagement === groupId) {
-                await this.renderSelectedGroupStudents(groupId);
+                await this.renderSelectedGroupJudges(groupId);
             }
-            // Re-render student checkboxes to update their state
-            const searchTerm = document.getElementById('superjudge-group-student-search')?.value || '';
-            await this.renderStudentCheckboxes(this.selectedGroupIdForManagement, searchTerm);
-            // Re-render groups list to update student counts
+            // Re-render judge checkboxes to update their state
+            const searchTerm = document.getElementById('superjudge-group-judge-search')?.value || '';
+            await this.renderJudgeCheckboxes(this.selectedGroupIdForManagement, searchTerm);
+            // Re-render groups list to update judge counts
             await this.renderGroupAssignmentUI();
         } catch (error) {
-            console.error('Error removing student from group:', error);
-            alert('Error removing student. Please try again.');
+            console.error('Error removing judge from group:', error);
+            alert('Error removing judge. Please try again.');
         }
     },
 
@@ -646,7 +679,7 @@ const SuperJudgeView = {
                     this.selectedGroupIdForManagement = null;
                 }
                 await this.renderGroups();
-                await this.renderGroupFilter();
+                await this.renderGradeButtons();
                 await this.renderStudents();
             } catch (error) {
                 console.error('Error deleting group:', error);
