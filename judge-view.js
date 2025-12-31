@@ -6,6 +6,7 @@
 const JudgeView = {
     currentStudentId: null,
     currentScores: {},
+    _listenersInitialized: false,
 
     async init() {
         this.setupEventListeners();
@@ -13,6 +14,9 @@ const JudgeView = {
     },
 
     setupEventListeners() {
+        if (this._listenersInitialized) {
+            return;
+        }
         // Student selection
         document.getElementById('judge-student-select').addEventListener('change', (e) => {
             this.selectStudent(e.target.value).catch(error => {
@@ -46,6 +50,8 @@ const JudgeView = {
             AuthManager.logout();
             App.showView('login');
         });
+
+        this._listenersInitialized = true;
     },
 
     async render() {

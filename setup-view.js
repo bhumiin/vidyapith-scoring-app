@@ -6,6 +6,7 @@
 const SetupView = {
     selectedGroupId: null,
     selectedJudgeId: null,
+    _listenersInitialized: false,
     
     async init() {
         this.setupEventListeners();
@@ -13,6 +14,9 @@ const SetupView = {
     },
 
     setupEventListeners() {
+        if (this._listenersInitialized) {
+            return;
+        }
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -95,6 +99,8 @@ const SetupView = {
             AuthManager.logout();
             App.showView('login');
         });
+
+        this._listenersInitialized = true;
     },
 
     async switchTab(tabName) {

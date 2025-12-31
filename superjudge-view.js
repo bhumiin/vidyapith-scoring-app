@@ -8,6 +8,7 @@ const SuperJudgeView = {
     selectedGroupIdForManagement: null,
     currentEditingStudent: null,
     currentEditingJudge: null,
+    _listenersInitialized: false,
 
     async init() {
         this.setupEventListeners();
@@ -15,6 +16,9 @@ const SuperJudgeView = {
     },
 
     setupEventListeners() {
+        if (this._listenersInitialized) {
+            return;
+        }
         // Tab switching
         document.querySelectorAll('#superjudge-view .tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -76,6 +80,8 @@ const SuperJudgeView = {
             AuthManager.logout();
             App.showView('login');
         });
+
+        this._listenersInitialized = true;
     },
 
     async switchTab(tabName) {
