@@ -498,9 +498,9 @@ const SupabaseService = {
                 .eq('student_id', studentId)
                 .eq('judge_id', judgeId)
                 .eq('criterion_id', criterionId)
-                .single();
+                .maybeSingle();
             
-            if (error && error.code !== 'PGRST116') throw error;
+            if (error) throw error;
             return data ? data.score : null;
         } catch (error) {
             console.error('Error fetching score:', error);
@@ -569,9 +569,9 @@ const SupabaseService = {
                 .select('id')
                 .eq('student_id', studentId)
                 .eq('judge_id', judgeId)
-                .single();
+                .maybeSingle();
             
-            if (error && error.code !== 'PGRST116') throw error;
+            if (error) throw error;
             return !!data;
         } catch (error) {
             console.error('Error checking submission:', error);

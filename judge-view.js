@@ -59,12 +59,25 @@ const JudgeView = {
         if (!user) return;
 
         try {
+            // Display judge name
+            const session = AuthManager.getSession();
+            if (session && session.name) {
+                document.getElementById('judge-name-display').textContent = session.name;
+            }
+
             // Display judge's groups
             const groups = await DataManager.getGroups();
             const judgeGroupIds = await SupabaseService.getJudgeGroups(user.id);
             const judgeGroups = groups.filter(g => judgeGroupIds.includes(g.id));
-            const groupNames = judgeGroups.map(g => g.name).join(', ') || 'No grades assigned';
-            document.getElementById('judge-groups-info').textContent = `Grades: ${groupNames}`;
+            const groupsInfoElement = document.getElementById('judge-groups-info');
+            
+            if (judgeGroups.length === 0) {
+                groupsInfoElement.innerHTML = '<span class="grade-capsule">No grades assigned</span>';
+            } else {
+                groupsInfoElement.innerHTML = judgeGroups.map(g => 
+                    `<span class="grade-capsule">Grade ${g.name}</span>`
+                ).join('');
+            }
 
             // Get students for this judge
             const students = await GroupManager.getStudentsForJudge(user.id);
