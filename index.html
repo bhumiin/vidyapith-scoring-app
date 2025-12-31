@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidyapith Youth Day Scoring System</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Login View -->
+        <div id="login-view" class="view active">
+            <div class="login-container">
+                <img src="Vivekananda Vidyapith Logo Design.png" alt="Vivekananda Vidyapith Logo" class="logo">
+                <h1>Vidyapith Youth Day Scoring System</h1>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="role">Role:</label>
+                        <select id="role" required>
+                            <option value="">Select Role</option>
+                            <option value="judge">Judge</option>
+                            <option value="superjudge">Super Judge</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <div id="login-error" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Setup View (Admin) -->
+        <div id="setup-view" class="view">
+            <div class="view-header">
+                <img src="Vivekananda Vidyapith Logo Design.png" alt="Vivekananda Vidyapith Logo" class="logo">
+                <div class="header-content">
+                    <h1>Setup & Configuration</h1>
+                    <button id="setup-logout" class="btn btn-secondary">Logout</button>
+                </div>
+            </div>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="students">Students</button>
+                <button class="tab-btn" data-tab="judges">Judges</button>
+                <button class="tab-btn" data-tab="superjudges">Super Judges</button>
+                <button class="tab-btn" data-tab="criteria">Criteria</button>
+                <button class="tab-btn" data-tab="groups">Grades</button>
+                <button class="tab-btn" data-tab="import-export">Import/Export</button>
+            </div>
+
+            <!-- Students Tab -->
+            <div id="students-tab" class="tab-content active">
+                <h2>Manage Students</h2>
+                <div class="form-section">
+                    <h3>Add Student Manually</h3>
+                    <input type="text" id="student-name-input" placeholder="Student Name">
+                    <input type="text" id="student-grade-input" placeholder="Grade" list="grade-list">
+                    <datalist id="grade-list"></datalist>
+                    <button id="add-student-manual" class="btn btn-primary">Add Student</button>
+                </div>
+                <div class="list-section">
+                    <h3>Current Students (<span id="student-count">0</span>)</h3>
+                    <input type="text" id="student-search" placeholder="Search students..." class="search-input">
+                    <div id="students-list" class="items-list"></div>
+                </div>
+            </div>
+
+            <!-- Judges Tab -->
+            <div id="judges-tab" class="tab-content">
+                <h2>Manage Judges</h2>
+                <div class="form-section">
+                    <input type="text" id="judge-name" placeholder="Judge Name">
+                    <input type="text" id="judge-username" placeholder="Username">
+                    <input type="password" id="judge-password" placeholder="Password">
+                    <button id="add-judge" class="btn btn-primary">Add Judge</button>
+                </div>
+                <div class="group-assignment-container">
+                    <div class="group-list-column">
+                        <h3>Judges (<span id="judge-count">0</span>)</h3>
+                        <div id="judges-list-container" class="groups-list-container"></div>
+                    </div>
+                    <div class="group-students-column">
+                        <div id="selected-judge-info" class="selected-group-info" style="display: none;">
+                            <h3 id="selected-judge-name"></h3>
+                            <div id="judge-groups-list" class="group-students-list"></div>
+                        </div>
+                        <div id="no-judge-selected" class="no-group-selected">
+                            <p>Select a judge to view and manage their grades</p>
+                        </div>
+                    </div>
+                    <div class="student-selector-column">
+                        <h3>Assign Grades</h3>
+                        <input type="text" id="judge-group-search" placeholder="Search grades..." class="search-input">
+                        <div class="checkbox-controls">
+                            <label>
+                                <input type="checkbox" id="select-all-groups"> Select All
+                            </label>
+                        </div>
+                        <div id="group-checkbox-list" class="student-checkbox-list"></div>
+                        <button id="assign-groups-btn" class="btn btn-primary" style="margin-top: 15px; width: 100%;" disabled>Assign Selected Grades to Judge</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Super Judges Tab -->
+            <div id="superjudges-tab" class="tab-content">
+                <h2>Manage Super Judges</h2>
+                <div class="form-section">
+                    <input type="text" id="superjudge-name" placeholder="Super Judge Name">
+                    <input type="text" id="superjudge-username" placeholder="Username">
+                    <input type="password" id="superjudge-password" placeholder="Password">
+                    <button id="add-superjudge" class="btn btn-primary">Add Super Judge</button>
+                </div>
+                <div class="list-section">
+                    <h3>Current Super Judges (<span id="superjudge-count">0</span>)</h3>
+                    <div id="superjudges-list" class="items-list"></div>
+                </div>
+            </div>
+
+            <!-- Criteria Tab -->
+            <div id="criteria-tab" class="tab-content">
+                <h2>Manage Scoring Criteria</h2>
+                <div class="form-section">
+                    <input type="text" id="criterion-name" placeholder="Criterion Name">
+                    <button id="add-criterion" class="btn btn-primary">Add Criterion</button>
+                </div>
+                <div class="list-section">
+                    <h3>Current Criteria (<span id="criterion-count">0</span>)</h3>
+                    <div id="criteria-list" class="items-list"></div>
+                </div>
+            </div>
+
+            <!-- Groups Tab -->
+            <div id="groups-tab" class="tab-content">
+                <h2>Manage Grades</h2>
+                <div class="group-assignment-container">
+                    <div class="group-list-column">
+                        <h3>Grades</h3>
+                        <div id="groups-list-container" class="groups-list-container"></div>
+                    </div>
+                    <div class="group-students-column">
+                        <div id="selected-group-info" class="selected-group-info" style="display: none;">
+                            <h3 id="selected-group-name"></h3>
+                            <div id="group-judges-list" class="group-students-list"></div>
+                        </div>
+                        <div id="no-group-selected" class="no-group-selected">
+                            <p>Select a grade to view and manage its judges</p>
+                        </div>
+                    </div>
+                    <div class="student-selector-column">
+                        <h3>Add Judges</h3>
+                        <input type="text" id="group-judge-search" placeholder="Search judges..." class="search-input">
+                        <div class="checkbox-controls">
+                            <label>
+                                <input type="checkbox" id="select-all-judges"> Select All
+                            </label>
+                        </div>
+                        <div id="judge-checkbox-list" class="student-checkbox-list"></div>
+                        <button id="assign-judges-btn" class="btn btn-primary" style="margin-top: 15px; width: 100%;" disabled>Assign Selected Judges to Grade</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import/Export Tab -->
+            <div id="import-export-tab" class="tab-content">
+                <h2>Import/Export Configuration</h2>
+                <div class="form-section">
+                    <h3>Import Students from Spreadsheet</h3>
+                    <p>Upload an Excel file (.xlsx) with columns: "Students Name" and "Grade". Each grade will be created as a group, and students will be assigned to their respective grade groups.</p>
+                    <input type="file" id="import-spreadsheet-file" accept=".xlsx">
+                    <button id="import-spreadsheet" class="btn btn-primary">Import Students from Excel</button>
+                    <div id="import-spreadsheet-status" class="import-status" style="margin-top: 10px; display: none;"></div>
+                </div>
+                <div class="form-section">
+                    <h3>Import Judges from Spreadsheet</h3>
+                    <p>Upload an Excel file (.xlsx) with columns: "Judge Name", "username", "password", and "Assigned group". Judges will be created or updated, and assigned to grades. If a judge with the same username exists, it will be updated.</p>
+                    <input type="file" id="import-judges-file" accept=".xlsx">
+                    <button id="import-judges" class="btn btn-primary">Import Judges from Excel</button>
+                    <div id="import-judges-status" class="import-status" style="margin-top: 10px; display: none;"></div>
+                </div>
+                <div class="form-section">
+                    <h3>Export Configuration</h3>
+                    <button id="export-config" class="btn btn-primary">Export to JSON</button>
+                </div>
+                <div class="form-section">
+                    <h3>Import Configuration</h3>
+                    <input type="file" id="import-file" accept=".json">
+                    <button id="import-config" class="btn btn-primary">Import from JSON</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Judge View -->
+        <div id="judge-view" class="view">
+            <div class="view-header">
+                <img src="Vivekananda Vidyapith Logo Design.png" alt="Vivekananda Vidyapith Logo" class="logo">
+                <div class="header-content">
+                    <h1>Judge Scoring</h1>
+                    <div>
+                        <span id="judge-groups-info" class="info-badge"></span>
+                        <button id="judge-logout" class="btn btn-secondary">Logout</button>
+                    </div>
+                </div>
+            </div>
+            <div class="judge-content">
+                <div class="student-selector-section">
+                    <h2>Select Student</h2>
+                    <input type="text" id="judge-student-search" placeholder="Search students..." class="search-input">
+                    <select id="judge-student-select" class="student-select">
+                        <option value="">-- Select a student --</option>
+                    </select>
+                </div>
+                <div id="judge-scoring-section" class="scoring-section" style="display: none;">
+                    <h2 id="current-student-name"></h2>
+                    <div id="criteria-scores"></div>
+                    <div class="score-summary">
+                        <div class="total-score">
+                            <strong>Total Score: <span id="judge-total-score">0</span></strong>
+                        </div>
+                        <button id="submit-scores" class="btn btn-success">Submit Scores</button>
+                        <button id="save-scores" class="btn btn-primary">Save (Draft)</button>
+                    </div>
+                </div>
+                <div id="judge-scored-students" class="scored-students-section">
+                    <h2>Scored Students</h2>
+                    <div id="scored-students-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Super Judge View -->
+        <div id="superjudge-view" class="view">
+            <div class="view-header">
+                <img src="Vivekananda Vidyapith Logo Design.png" alt="Vivekananda Vidyapith Logo" class="logo">
+                <div class="header-content">
+                    <h1>Super Judge Dashboard</h1>
+                    <button id="superjudge-logout" class="btn btn-secondary">Logout</button>
+                </div>
+            </div>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="scores">View Scores</button>
+                <button class="tab-btn" data-tab="group-management">Grade Management</button>
+                <button class="tab-btn" data-tab="export">Export Data</button>
+            </div>
+
+            <!-- Scores Tab -->
+            <div id="scores-tab" class="tab-content active">
+                <div class="filter-section">
+                    <label for="group-filter">Filter by Grade:</label>
+                    <select id="group-filter">
+                        <option value="all">All Grades</option>
+                    </select>
+                    <input type="text" id="superjudge-student-search" placeholder="Search students..." class="search-input">
+                </div>
+                <div id="superjudge-students-list" class="students-list"></div>
+            </div>
+
+            <!-- Group Management Tab -->
+            <div id="group-management-tab" class="tab-content">
+                <h2>Manage Grades</h2>
+                <div class="form-section">
+                    <input type="text" id="superjudge-group-name" placeholder="Grade Name">
+                    <button id="superjudge-add-group" class="btn btn-primary">Create Grade</button>
+                </div>
+                <div class="group-assignment-container">
+                    <div class="group-list-column">
+                        <h3>Grades</h3>
+                        <div id="superjudge-groups-list-container" class="groups-list-container"></div>
+                    </div>
+                    <div class="group-students-column">
+                        <div id="superjudge-selected-group-info" class="selected-group-info" style="display: none;">
+                            <h3 id="superjudge-selected-group-name"></h3>
+                            <div id="superjudge-group-students-list" class="group-students-list"></div>
+                        </div>
+                        <div id="superjudge-no-group-selected" class="no-group-selected">
+                            <p>Select a grade to view and manage its students</p>
+                        </div>
+                    </div>
+                    <div class="student-selector-column">
+                        <h3>Add Students</h3>
+                        <input type="text" id="superjudge-group-student-search" placeholder="Search students..." class="search-input">
+                        <div class="checkbox-controls">
+                            <label>
+                                <input type="checkbox" id="superjudge-select-all-students"> Select All
+                            </label>
+                        </div>
+                        <div id="superjudge-student-checkbox-list" class="student-checkbox-list"></div>
+                        <button id="superjudge-assign-students-btn" class="btn btn-primary" style="margin-top: 15px; width: 100%;" disabled>Add Selected Students to Grade</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Tab -->
+            <div id="export-tab" class="tab-content">
+                <h2>Export Scores</h2>
+                <div class="form-section">
+                    <button id="export-csv" class="btn btn-primary">Export to CSV</button>
+                    <button id="export-excel" class="btn btn-primary">Export to Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Bcrypt.js for password hashing -->
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+    
+    <!-- Application Scripts -->
+    <script src="supabase-config.js"></script>
+    <script src="password-utils.js"></script>
+    <script src="supabase-service.js"></script>
+    <script src="data.js"></script>
+    <script src="group-management.js"></script>
+    <script src="auth.js"></script>
+    <script src="setup-view.js"></script>
+    <script src="judge-view.js"></script>
+    <script src="superjudge-view.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+

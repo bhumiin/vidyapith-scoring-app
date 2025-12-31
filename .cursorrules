@@ -1,0 +1,87 @@
+# .cursorrules
+# Author: Bhumin Desai
+# Purpose: Guide Cursor AI for Flutter app development with automatic tests and documentation.
+
+metadata:
+  version: 1.1
+  project_type: "Flutter Mobile App (iOS + Android)"
+  language: "Dart"
+  framework: "Flutter 3.x"
+  architecture: "Clean Architecture using setState() for local state management"
+  owner: "Bhumin Desai"
+  last_updated: "2025-10-31"
+
+defaults:
+  model: "gpt-5"
+  temperature: 0.3
+  max_tokens: 3500
+  language: "dart"
+  auto_generate:
+    comments: true
+    tests: true
+
+rules:
+  - name: "General Dart & Flutter Coding Style"
+    patterns: ["lib/**/*.dart"]
+    description: "Follow Dart style guide and maintain Flutter conventions."
+    body: |
+      - Use null safety throughout the project.
+      - Follow Dart and Flutter style conventions.
+      - Use final and const wherever applicable.
+      - Keep widgets small and reusable.
+      - Avoid deeply nested widget trees; extract reusable widgets.
+      - Avoid print() statements; use debugPrint() or a logging utility.
+      - Always dispose controllers and listeners properly.
+      - Sort and clean imports automatically.
+
+  - name: "Architecture and State Management"
+    description: "Define how state and logic are handled."
+    patterns: ["lib/**/*.dart"]
+    body: |
+      - Manage local widget state using setState().
+      - Keep UI widgets clean and move business logic into helper methods.
+      - Avoid global variables and mutable shared state.
+      - Pass data via constructors or callbacks between widgets.
+      - Use controllers or services for reusable logic (in /lib/core or /lib/services).
+
+  - name: "Project Folder Structure"
+    description: "Standard folder organization for Flutter apps."
+    body: |
+      /lib
+        /core           # constants, theme, utils, services
+        /features
+          /<feature_name>
+            /presentation   # UI layer (widgets, screens)
+            /application    # helper classes, controllers
+            /domain         # models or entities
+        /widgets         # shared reusable widgets
+        /routes          # navigation setup
+      /assets
+        /images
+        /fonts
+      /test              # all unit and widget tests
+
+  - name: "UI and Theming Rules"
+    description: "Maintain consistent design patterns."
+    body: |
+      - Use Material 3 components.
+      - Define all colors, typography, and spacing in /core/theme.
+      - Avoid inline styling; use theme or constants.
+      - Build responsive UIs with LayoutBuilder or MediaQuery.
+      - Test UI in both light and dark themes.
+
+  - name: "API, Data, and Storage Rules"
+    description: "Guidelines for HTTP and local persistence."
+    patterns: ["lib/**/*.dart"]
+    body: |
+      - Use http or dio for API requests.
+      - Use shared_preferences or flutter_secure_storage for local storage.
+      - Wrap network calls in try-catch with proper error messages.
+      - Keep all API calls in /core/services or /features/<name>/application.
+
+  - name: "Automatic Documentation and Comments"
+    description: "Cursor should generate and maintain documentation automatically."
+    body: |
+      - Generate DartDoc-style comments (///) for:
+          * Classes
+          * Public functions and methods
