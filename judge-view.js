@@ -8,6 +8,14 @@ const JudgeView = {
     currentScores: {},
     selectedGradeId: null,
     _listenersInitialized: false,
+    // Stopwatch state
+    stopwatch: {
+        elapsedSeconds: 0,
+        timerInterval: null,
+        isRunning: false,
+        isPaused: false,
+        timeLimitSeconds: null
+    },
 
     async init() {
         this.setupEventListeners();
@@ -57,6 +65,19 @@ const JudgeView = {
         document.getElementById('judge-logout').addEventListener('click', () => {
             AuthManager.logout();
             App.showView('login');
+        });
+
+        // Stopwatch controls
+        document.getElementById('stopwatch-start-stop').addEventListener('click', () => {
+            this.startStopStopwatch();
+        });
+
+        document.getElementById('stopwatch-pause').addEventListener('click', () => {
+            this.pauseStopwatch();
+        });
+
+        document.getElementById('stopwatch-reset').addEventListener('click', () => {
+            this.resetStopwatch();
         });
 
         this._listenersInitialized = true;
@@ -227,7 +248,9 @@ const JudgeView = {
     async selectStudent(studentId) {
         if (!studentId) {
             document.getElementById('judge-scoring-section').style.display = 'none';
+            document.getElementById('stopwatch-container').style.display = 'none';
             this.currentStudentId = null;
+            this.resetStopwatch();
             return;
         }
 
@@ -239,8 +262,12 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             const submitted = await DataManager.isSubmitted(studentId, user.id);
 
+            // Initialize stopwatch with topic time limit
+            await this.initializeStopwatch(student.group_id);
+
             document.getElementById('current-student-name').textContent = student.name;
             document.getElementById('judge-scoring-section').style.display = 'block';
+            document.getElementById('stopwatch-container').style.display = 'block';
 
             // Load existing scores
             this.currentScores = {};
@@ -453,6 +480,174 @@ const JudgeView = {
             console.error('Error rendering scored students:', error);
             const container = document.getElementById('scored-students-list');
             container.innerHTML = '<p class="empty-message">Error loading scored students.</p>';
+        }
+    },
+
+    /**
+     * Initialize stopwatch with topic time limit for the selected grade
+     */
+    async initializeStopwatch(groupId) {
+        try {
+            // Reset stopwatch first
+            this.resetStopwatch();
+
+            // Get topics for the grade
+            const topics = await DataManager.getTopicsByGroup(groupId);
+            
+            // Get time limit from first topic (one topic per grade)
+            if (topics && topics.length > 0 && topics[0].time_limit) {
+                // Convert minutes to seconds
+                this.stopwatch.timeLimitSeconds = topics[0].time_limit * 60;
+            } else {
+                this.stopwatch.timeLimitSeconds = null;
+            }
+
+            // Update display immediately
+            this.updateStopwatchDisplay();
+        } catch (error) {
+            console.error('Error initializing stopwatch:', error);
+            this.stopwatch.timeLimitSeconds = null;
+            this.updateStopwatchDisplay();
+        }
+    },
+
+    /**
+     * Start or stop the stopwatch
+     */
+    startStopStopwatch() {
+        if (this.stopwatch.isRunning) {
+            this.stopStopwatch();
+        } else if (this.stopwatch.isPaused) {
+            // Resume from pause
+            this.startStopwatch();
+        } else {
+            // Start fresh
+            this.startStopwatch();
+        }
+    },
+
+    /**
+     * Start the stopwatch
+     */
+    startStopwatch() {
+        if (this.stopwatch.isRunning) return;
+
+        this.stopwatch.isRunning = true;
+        this.stopwatch.isPaused = false;
+
+        const startBtn = document.getElementById('stopwatch-start-stop');
+        startBtn.textContent = 'Stop';
+        startBtn.classList.remove('btn-primary');
+        startBtn.classList.add('btn-danger');
+
+        this.stopwatch.timerInterval = setInterval(() => {
+            this.stopwatch.elapsedSeconds++;
+            this.updateStopwatchDisplay();
+            this.checkTimeLimit();
+        }, 1000);
+    },
+
+    /**
+     * Pause the stopwatch
+     */
+    pauseStopwatch() {
+        if (!this.stopwatch.isRunning) return;
+
+        this.stopwatch.isRunning = false;
+        this.stopwatch.isPaused = true;
+
+        const startBtn = document.getElementById('stopwatch-start-stop');
+        startBtn.textContent = 'Resume';
+        startBtn.classList.remove('btn-danger');
+        startBtn.classList.add('btn-primary');
+
+        if (this.stopwatch.timerInterval) {
+            clearInterval(this.stopwatch.timerInterval);
+            this.stopwatch.timerInterval = null;
+        }
+    },
+
+    /**
+     * Stop the stopwatch
+     */
+    stopStopwatch() {
+        this.stopwatch.isRunning = false;
+        this.stopwatch.isPaused = false;
+
+        const startBtn = document.getElementById('stopwatch-start-stop');
+        startBtn.textContent = 'Start';
+        startBtn.classList.remove('btn-danger');
+        startBtn.classList.add('btn-primary');
+
+        if (this.stopwatch.timerInterval) {
+            clearInterval(this.stopwatch.timerInterval);
+            this.stopwatch.timerInterval = null;
+        }
+    },
+
+    /**
+     * Reset the stopwatch to 00:00
+     */
+    resetStopwatch() {
+        this.stopStopwatch();
+        this.stopwatch.elapsedSeconds = 0;
+        this.stopwatch.isPaused = false;
+        this.updateStopwatchDisplay();
+        this.removeTimeLimitWarning();
+        
+        // Reset button text
+        const startBtn = document.getElementById('stopwatch-start-stop');
+        if (startBtn) {
+            startBtn.textContent = 'Start';
+            startBtn.classList.remove('btn-danger');
+            startBtn.classList.add('btn-primary');
+        }
+    },
+
+    /**
+     * Update the stopwatch display
+     */
+    updateStopwatchDisplay() {
+        const minutes = Math.floor(this.stopwatch.elapsedSeconds / 60);
+        const seconds = this.stopwatch.elapsedSeconds % 60;
+        const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        const timeDisplay = document.getElementById('stopwatch-time');
+        if (timeDisplay) {
+            timeDisplay.textContent = timeString;
+        }
+    },
+
+    /**
+     * Check if elapsed time exceeds the time limit and apply warning styles
+     */
+    checkTimeLimit() {
+        if (this.stopwatch.timeLimitSeconds === null) return;
+
+        if (this.stopwatch.elapsedSeconds > this.stopwatch.timeLimitSeconds) {
+            this.applyTimeLimitWarning();
+        } else {
+            this.removeTimeLimitWarning();
+        }
+    },
+
+    /**
+     * Apply red color and blinking animation when time limit is exceeded
+     */
+    applyTimeLimitWarning() {
+        const timeDisplay = document.getElementById('stopwatch-time');
+        if (timeDisplay) {
+            timeDisplay.classList.add('stopwatch-over-limit');
+        }
+    },
+
+    /**
+     * Remove warning styles when time is within limit
+     */
+    removeTimeLimitWarning() {
+        const timeDisplay = document.getElementById('stopwatch-time');
+        if (timeDisplay) {
+            timeDisplay.classList.remove('stopwatch-over-limit');
         }
     }
 };

@@ -940,6 +940,60 @@ body {
     color: #666;
 }
 
+/* Stopwatch Styles */
+.stopwatch-container {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin: 20px 0;
+    text-align: center;
+}
+
+.stopwatch-display {
+    margin-bottom: 20px;
+}
+
+.stopwatch-display #stopwatch-time {
+    font-size: 48px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    color: #333;
+    display: inline-block;
+    min-width: 120px;
+    padding: 10px 15px;
+    border: 5px solid transparent;
+    border-radius: 8px;
+    transition: color 0.3s ease, border-color 0.3s ease;
+}
+
+.stopwatch-display #stopwatch-time.stopwatch-over-limit {
+    color: #dc3545;
+    animation: stopwatch-border-blink 1s infinite;
+}
+
+@keyframes stopwatch-border-blink {
+    0%, 100% {
+        border-color: #dc3545;
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+    }
+    50% {
+        border-color: #ff6b7a;
+        box-shadow: 0 0 0 6px rgba(220, 53, 69, 0.2);
+    }
+}
+
+.stopwatch-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.stopwatch-controls .btn {
+    min-width: 100px;
+}
+
 /* Super Judge View */
 .grade-buttons-container {
     margin-bottom: 30px;
