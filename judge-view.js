@@ -6,6 +6,7 @@
 const JudgeView = {
     currentStudentId: null,
     currentScores: {},
+    selectedGradeId: null,
     _listenersInitialized: false,
 
     async init() {
@@ -24,12 +25,19 @@ const JudgeView = {
             });
         });
 
-        // Student search
-        document.getElementById('judge-student-search').addEventListener('input', (e) => {
-            this.filterStudents(e.target.value).catch(error => {
-                console.error('Error filtering students:', error);
+        // Grade capsule clicks (delegated event handling)
+        const groupsInfoElement = document.getElementById('judge-groups-info');
+        if (groupsInfoElement) {
+            groupsInfoElement.addEventListener('click', (e) => {
+                const gradeCapsule = e.target.closest('.grade-capsule.clickable');
+                if (gradeCapsule) {
+                    const groupId = gradeCapsule.dataset.groupId;
+                    this.selectGrade(groupId).catch(error => {
+                        console.error('Error selecting grade:', error);
+                    });
+                }
             });
-        });
+        }
 
         // Submit scores
         document.getElementById('submit-scores').addEventListener('click', () => {
@@ -65,18 +73,49 @@ const JudgeView = {
                 document.getElementById('judge-name-display').textContent = session.name;
             }
 
-            // Display judge's groups
+            // Display judge's groups with topics
             const groups = await DataManager.getGroups();
             const judgeGroupIds = await SupabaseService.getJudgeGroups(user.id);
             const judgeGroups = groups.filter(g => judgeGroupIds.includes(g.id));
             const groupsInfoElement = document.getElementById('judge-groups-info');
+            const topicsContainerElement = document.getElementById('judge-topics-info');
+            
+            // Reset selected grade
+            this.selectedGradeId = null;
             
             if (judgeGroups.length === 0) {
                 groupsInfoElement.innerHTML = '<span class="grade-capsule">No grades assigned</span>';
+                if (topicsContainerElement) {
+                    topicsContainerElement.innerHTML = '';
+                }
             } else {
-                groupsInfoElement.innerHTML = judgeGroups.map(g => 
-                    `<span class="grade-capsule">Grade ${g.name}</span>`
-                ).join('');
+                const isMultipleGrades = judgeGroups.length > 1;
+                const clickableClass = isMultipleGrades ? 'clickable' : '';
+                
+                // Fetch and display topics for each grade
+                if (judgeGroups.length === 1) {
+                    // Single grade: auto-select and show topics directly
+                    this.selectedGradeId = judgeGroups[0].id;
+                    const selectedClass = 'selected';
+                    
+                    // Render grade capsule with selected class
+                    groupsInfoElement.innerHTML = judgeGroups.map(g => 
+                        `<span class="grade-capsule ${selectedClass}" data-group-id="${g.id}">Grade ${g.name}</span>`
+                    ).join('');
+                    
+                    const topics = await DataManager.getTopicsByGroup(judgeGroups[0].id);
+                    await this.renderTopics(topics, judgeGroups[0].id);
+                } else {
+                    // Multiple grades: render clickable capsules
+                    groupsInfoElement.innerHTML = judgeGroups.map(g => 
+                        `<span class="grade-capsule ${clickableClass}" data-group-id="${g.id}">Grade ${g.name}</span>`
+                    ).join('');
+                    
+                    // Show message to select a grade
+                    if (topicsContainerElement) {
+                        topicsContainerElement.innerHTML = '<p class="topic-message">Please select a grade to view topics and students</p>';
+                    }
+                }
             }
 
             // Get students for this judge
@@ -91,14 +130,24 @@ const JudgeView = {
 
     async renderStudentSelect(students) {
         const select = document.getElementById('judge-student-select');
-        const searchTerm = document.getElementById('judge-student-search').value.toLowerCase();
         
-        const filtered = students.filter(s => 
-            s.name.toLowerCase().includes(searchTerm)
-        );
+        // Filter students by selected grade if one is selected
+        let filtered = students;
+        if (this.selectedGradeId) {
+            filtered = students.filter(s => s.group_id === this.selectedGradeId);
+        }
 
         const user = await AuthManager.getCurrentUser();
         if (!user) return;
+
+        if (filtered.length === 0) {
+            if (this.selectedGradeId) {
+                select.innerHTML = '<option value="">No students assigned to this grade</option>';
+            } else {
+                select.innerHTML = '<option value="">-- Select a grade first --</option>';
+            }
+            return;
+        }
 
         const options = await Promise.all(filtered.map(async student => {
             const submitted = await DataManager.isSubmitted(student.id, user.id);
@@ -109,10 +158,70 @@ const JudgeView = {
         select.innerHTML = '<option value="">-- Select a student --</option>' + options.join('');
     },
 
-    async filterStudents(searchTerm) {
+    async selectGrade(groupId) {
+        this.selectedGradeId = groupId;
+        
+        // Update visual state of grade capsules
+        const groupsInfoElement = document.getElementById('judge-groups-info');
+        if (groupsInfoElement) {
+            const capsules = groupsInfoElement.querySelectorAll('.grade-capsule');
+            capsules.forEach(capsule => {
+                if (capsule.dataset.groupId === groupId) {
+                    capsule.classList.add('selected');
+                } else {
+                    capsule.classList.remove('selected');
+                }
+            });
+        }
+        
+        // Fetch and display topics for selected grade
+        const topics = await DataManager.getTopicsByGroup(groupId);
+        await this.renderTopics(topics, groupId);
+        
+        // Filter and re-render student dropdown
         const user = await AuthManager.getCurrentUser();
+        if (!user) return;
+        
         const students = await GroupManager.getStudentsForJudge(user.id);
         await this.renderStudentSelect(students);
+        
+        // Clear current student selection if it's not in the selected grade
+        if (this.currentStudentId) {
+            const students = await DataManager.getStudents();
+            const student = students.find(s => s.id === this.currentStudentId);
+            if (student && student.group_id !== groupId) {
+                document.getElementById('judge-student-select').value = '';
+                this.selectStudent('').catch(error => {
+                    console.error('Error clearing student selection:', error);
+                });
+            }
+        }
+        
+        // Refresh scored students list to show only students from selected grade
+        await this.renderScoredStudents();
+    },
+
+    async renderTopics(topics, groupId) {
+        const topicsContainerElement = document.getElementById('judge-topics-info');
+        if (!topicsContainerElement) return;
+        
+        if (topics.length === 0) {
+            topicsContainerElement.innerHTML = '<p class="topic-message">No topics assigned to this grade</p>';
+            return;
+        }
+        
+        // Display topics as a centered list
+        const topicsList = topics.map(topic => {
+            const timeLimit = topic.time_limit ? ` (${topic.time_limit} min)` : '';
+            return `<li>${topic.name}${timeLimit}</li>`;
+        }).join('');
+        
+        topicsContainerElement.innerHTML = `
+            <div class="topics-display">
+                <h3 class="topics-title">Topics:</h3>
+                <ul class="topics-list">${topicsList}</ul>
+            </div>
+        `;
     },
 
     async selectStudent(studentId) {
@@ -273,9 +382,26 @@ const JudgeView = {
     async renderScoredStudents() {
         try {
             const user = await AuthManager.getCurrentUser();
-            const students = await GroupManager.getStudentsForJudge(user.id);
-            const criteria = await DataManager.getCriteria();
             const container = document.getElementById('scored-students-list');
+            
+            // Check if judge has multiple grades and no grade is selected
+            const groups = await DataManager.getGroups();
+            const judgeGroupIds = await SupabaseService.getJudgeGroups(user.id);
+            const judgeGroups = groups.filter(g => judgeGroupIds.includes(g.id));
+            
+            if (judgeGroups.length > 1 && !this.selectedGradeId) {
+                container.innerHTML = '<p class="empty-message">Please select a grade to view scored students.</p>';
+                return;
+            }
+            
+            let students = await GroupManager.getStudentsForJudge(user.id);
+            
+            // Filter students by selected grade if one is selected
+            if (this.selectedGradeId) {
+                students = students.filter(s => s.group_id === this.selectedGradeId);
+            }
+            
+            const criteria = await DataManager.getCriteria();
 
             const scoredStudents = [];
             for (const student of students) {

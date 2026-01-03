@@ -79,6 +79,7 @@ const SuperJudgeView = {
 
         if (tabName === 'scores') {
             await this.renderGradeButtons();
+            await this.renderTopicsDisplay();
             await this.renderStudents();
         } else if (tabName === 'group-management') {
             await this.renderGroups();
@@ -96,6 +97,7 @@ const SuperJudgeView = {
         document.getElementById('superjudge-groups-info').style.display = 'none';
 
         await this.renderGradeButtons();
+        await this.renderTopicsDisplay();
         await this.renderStudents();
         await this.renderGroups();
     },
@@ -137,7 +139,47 @@ const SuperJudgeView = {
     async selectGrade(gradeId) {
         this.selectedGradeId = gradeId;
         await this.renderGradeButtons();
+        await this.renderTopicsDisplay();
         await this.renderStudents();
+    },
+
+    async renderTopicsDisplay() {
+        try {
+            const container = document.getElementById('superjudge-topics-display');
+            if (!container) {
+                return;
+            }
+            
+            // If no grade is selected, clear topics display
+            if (!this.selectedGradeId) {
+                container.innerHTML = '';
+                return;
+            }
+
+            // Fetch topics for the selected grade
+            const topics = await DataManager.getTopicsByGroup(this.selectedGradeId);
+            
+            if (!topics || topics.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            // Format topics with name and time limit
+            const topicsHTML = topics.map(topic => {
+                const timeLimitText = topic.time_limit !== null && topic.time_limit !== undefined 
+                    ? ` (${topic.time_limit} min)` 
+                    : '';
+                return `<div class="topic-item">${topic.name}${timeLimitText}</div>`;
+            }).join('');
+
+            container.innerHTML = topicsHTML;
+        } catch (error) {
+            console.error('Error rendering topics display:', error);
+            const container = document.getElementById('superjudge-topics-display');
+            if (container) {
+                container.innerHTML = '';
+            }
+        }
     },
 
     async renderStudents() {
@@ -147,6 +189,7 @@ const SuperJudgeView = {
             // If no grade is selected, show empty message
             if (!this.selectedGradeId) {
                 container.innerHTML = '<p class="empty-message">Select a grade to view students</p>';
+                await this.renderTopicsDisplay(); // Clear topics when no grade selected
                 return;
             }
 
@@ -686,6 +729,7 @@ const SuperJudgeView = {
                 alert('Error deleting group. Please try again.');
             }
         }
-    }
+    },
+
 };
 

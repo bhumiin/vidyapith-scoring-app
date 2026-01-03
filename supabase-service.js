@@ -488,6 +488,103 @@ const SupabaseService = {
         }
     },
 
+    // ==================== TOPICS ====================
+    
+    async getTopics() {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('topics')
+                .select('*')
+                .order('name');
+            
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching topics:', error);
+            throw error;
+        }
+    },
+
+    async getTopicsByGroup(groupId) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('topics')
+                .select('*')
+                .eq('group_id', groupId)
+                .order('name');
+            
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching topics by group:', error);
+            throw error;
+        }
+    },
+
+    async addTopic(name, groupId, timeLimit) {
+        try {
+            const insertData = { 
+                name: name.trim(),
+                group_id: groupId
+            };
+            
+            // Only include time_limit if provided and is a valid number
+            if (timeLimit !== null && timeLimit !== undefined && timeLimit !== '') {
+                const timeLimitNum = parseInt(timeLimit, 10);
+                if (!isNaN(timeLimitNum) && timeLimitNum >= 0) {
+                    insertData.time_limit = timeLimitNum;
+                }
+            }
+            
+            const { data, error } = await getSupabaseClient()
+                .from('topics')
+                .insert([insertData])
+                .select()
+                .single();
+            
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error adding topic:', error);
+            throw error;
+        }
+    },
+
+    async removeTopic(id) {
+        try {
+            const { error } = await getSupabaseClient()
+                .from('topics')
+                .delete()
+                .eq('id', id);
+            
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error removing topic:', error);
+            throw error;
+        }
+    },
+
+    async updateTopic(id, name, groupId) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('topics')
+                .update({ 
+                    name: name.trim(),
+                    group_id: groupId
+                })
+                .eq('id', id)
+                .select()
+                .single();
+            
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error updating topic:', error);
+            throw error;
+        }
+    },
+
     // ==================== SCORES ====================
     
     async getScore(studentId, judgeId, criterionId) {

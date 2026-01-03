@@ -252,6 +252,78 @@ body {
     font-style: normal;
 }
 
+.grade-capsule.clickable {
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.grade-capsule.clickable:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.grade-capsule.selected {
+    background: #5568d3;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+    border: 2px solid #fff;
+}
+
+.judge-topics-display {
+    text-align: center;
+    margin: 8px 0 12px 0;
+    width: 100%;
+}
+
+.topics-display {
+    display: inline-block;
+    text-align: left;
+    background: #f8f9fa;
+    padding: 15px 25px;
+    border-radius: 8px;
+    max-width: 600px;
+}
+
+.topics-title {
+    margin: 0 0 10px 0;
+    color: #667eea;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.topics-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+}
+
+.topics-list li {
+    padding: 8px 0;
+    color: #333;
+    font-size: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.topics-list li:last-child {
+    border-bottom: none;
+}
+
+.topics-list li:before {
+    content: "• ";
+    color: #667eea;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.topic-message {
+    color: #666;
+    font-style: italic;
+    margin: 0;
+    padding: 10px;
+}
+
 /* Tabs */
 .tabs {
     display: flex;
@@ -525,6 +597,22 @@ body {
     grid-template-columns: 1fr 1fr 1.5fr;
     gap: 30px;
     margin-top: 30px;
+}
+
+/* Topics Tab Specific Layout */
+.group-assignment-container.topics-layout {
+    grid-template-columns: 300px 1fr;
+}
+
+.topics-panels-container {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.topics-panels-container .group-students-column,
+.topics-panels-container .student-selector-column {
+    width: 100%;
 }
 
 .group-list-column {
@@ -855,6 +943,19 @@ body {
 /* Super Judge View */
 .grade-buttons-container {
     margin-bottom: 30px;
+}
+
+.superjudge-topics-display {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 15px 0;
+}
+
+.superjudge-topics-display .topic-item {
+    font-weight: bold;
+    font-size: 18px;
+    color: #333;
+    margin: 8px 0;
 }
 
 .grade-buttons-grid {

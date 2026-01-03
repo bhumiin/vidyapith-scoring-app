@@ -11,6 +11,7 @@ const DataManager = {
         superJudges: null,
         groups: null,
         criteria: null,
+        topics: null,
         scores: null,
         submissions: null
     },
@@ -34,6 +35,7 @@ const DataManager = {
             this._cache.superJudges = await SupabaseService.getSuperJudges();
             this._cache.groups = await SupabaseService.getGroups();
             this._cache.criteria = await SupabaseService.getCriteria();
+            this._cache.topics = await SupabaseService.getTopics();
             this._cache.scores = await SupabaseService.getAllScores();
             this._cache.submissions = await SupabaseService.getAllSubmissions();
         } catch (error) {
@@ -214,6 +216,55 @@ const DataManager = {
             await this.refreshCache();
         } catch (error) {
             console.error('Error removing criterion:', error);
+            throw error;
+        }
+    },
+
+    // ==================== TOPICS ====================
+
+    async getTopics() {
+        try {
+            const topics = await SupabaseService.getTopics();
+            this._cache.topics = topics;
+            return topics;
+        } catch (error) {
+            console.error('Error getting topics:', error);
+            return this._cache.topics || [];
+        }
+    },
+
+    async getTopicsByGroup(groupId) {
+        try {
+            const topics = await SupabaseService.getTopicsByGroup(groupId);
+            return topics;
+        } catch (error) {
+            console.error('Error getting topics by group:', error);
+            return [];
+        }
+    },
+
+    saveTopics(topics) {
+        // No-op: Supabase handles persistence automatically
+        this._cache.topics = topics;
+    },
+
+    async addTopic(name, groupId, timeLimit) {
+        try {
+            const newTopic = await SupabaseService.addTopic(name, groupId, timeLimit);
+            await this.refreshCache();
+            return newTopic;
+        } catch (error) {
+            console.error('Error adding topic:', error);
+            throw error;
+        }
+    },
+
+    async removeTopic(id) {
+        try {
+            await SupabaseService.removeTopic(id);
+            await this.refreshCache();
+        } catch (error) {
+            console.error('Error removing topic:', error);
             throw error;
         }
     },

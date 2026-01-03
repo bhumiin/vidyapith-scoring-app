@@ -52,7 +52,7 @@
                 <button class="tab-btn" data-tab="judges">Judges</button>
                 <button class="tab-btn" data-tab="superjudges">Super Judges</button>
                 <button class="tab-btn" data-tab="criteria">Criteria</button>
-                <button class="tab-btn" data-tab="groups">Grades</button>
+                <button class="tab-btn" data-tab="topics">Topic</button>
                 <button class="tab-btn" data-tab="import-export">Import/Export</button>
             </div>
 
@@ -138,33 +138,40 @@
                 </div>
             </div>
 
-            <!-- Groups Tab -->
-            <div id="groups-tab" class="tab-content">
-                <h2>Manage Grades</h2>
-                <div class="group-assignment-container">
+            <!-- Topics Tab -->
+            <div id="topics-tab" class="tab-content">
+                <h2>Manage Topics</h2>
+                <div class="form-section">
+                    <h3>Add Topic</h3>
+                    <input type="text" id="topic-name-input" placeholder="Topic Name">
+                    <input type="number" id="topic-time-limit-input" placeholder="Time Limit (in Minutes)" min="0" step="1">
+                    <select id="topic-grade-select">
+                        <option value="">Select a grade</option>
+                    </select>
+                    <button id="add-topic-btn" class="btn btn-primary">Add Topic</button>
+                </div>
+                <div class="group-assignment-container topics-layout">
                     <div class="group-list-column">
                         <h3>Grades</h3>
-                        <div id="groups-list-container" class="groups-list-container"></div>
+                        <div id="topics-groups-list-container" class="groups-list-container"></div>
                     </div>
-                    <div class="group-students-column">
-                        <div id="selected-group-info" class="selected-group-info" style="display: none;">
-                            <h3 id="selected-group-name"></h3>
-                            <div id="group-judges-list" class="group-students-list"></div>
+                    <div class="topics-panels-container">
+                        <div class="group-students-column">
+                            <h3>Topic</h3>
+                            <div id="topics-selected-group-info" class="selected-group-info" style="display: none;">
+                                <div id="topics-list" class="group-students-list"></div>
+                            </div>
+                            <div id="topics-no-group-selected" class="no-group-selected">
+                                <p>Select a grade to view its topics</p>
+                            </div>
                         </div>
-                        <div id="no-group-selected" class="no-group-selected">
-                            <p>Select a grade to view and manage its judges</p>
+                        <div class="student-selector-column">
+                            <h3>Assigned Judges</h3>
+                            <div id="topics-group-judges-list" class="group-students-list"></div>
+                            <div id="topics-no-judges-message" class="no-group-selected" style="display: none;">
+                                <p>Select a grade to view its judges</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="student-selector-column">
-                        <h3>Add Judges</h3>
-                        <input type="text" id="group-judge-search" placeholder="Search judges..." class="search-input">
-                        <div class="checkbox-controls">
-                            <label>
-                                <input type="checkbox" id="select-all-judges"> Select All
-                            </label>
-                        </div>
-                        <div id="judge-checkbox-list" class="student-checkbox-list"></div>
-                        <button id="assign-judges-btn" class="btn btn-primary" style="margin-top: 15px; width: 100%;" disabled>Assign Selected Judges to Grade</button>
                     </div>
                 </div>
             </div>
@@ -204,6 +211,7 @@
                 <img src="Vivekananda Vidyapith Logo Design.png" alt="Vivekananda Vidyapith Logo" class="logo">
                 <div id="judge-name-display" class="judge-name-display"></div>
                 <div id="judge-groups-info" class="judge-grades-display"></div>
+                <div id="judge-topics-info" class="judge-topics-display"></div>
                 <div class="header-content">
                     <h1>Judge Scoring</h1>
                     <button id="judge-logout" class="btn btn-secondary">Logout</button>
@@ -212,7 +220,6 @@
             <div class="judge-content">
                 <div class="student-selector-section">
                     <h2>Select Student</h2>
-                    <input type="text" id="judge-student-search" placeholder="Search students..." class="search-input">
                     <select id="judge-student-select" class="student-select">
                         <option value="">-- Select a student --</option>
                     </select>
@@ -255,6 +262,7 @@
             <!-- Scores Tab -->
             <div id="scores-tab" class="tab-content active">
                 <div id="grade-buttons-container" class="grade-buttons-container"></div>
+                <div id="superjudge-topics-display" class="superjudge-topics-display"></div>
                 <div id="superjudge-students-list" class="students-list"></div>
             </div>
 

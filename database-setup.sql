@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS criteria (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create topics table
+CREATE TABLE IF NOT EXISTS topics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    time_limit INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create scores table
 CREATE TABLE IF NOT EXISTS scores (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -89,6 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_scores_judge_id ON scores(judge_id);
 CREATE INDEX IF NOT EXISTS idx_scores_criterion_id ON scores(criterion_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_id ON submissions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_judge_id ON submissions(judge_id);
+CREATE INDEX IF NOT EXISTS idx_topics_group_id ON topics(group_id);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -111,6 +121,7 @@ ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE group_judges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE criteria ENABLE ROW LEVEL SECURITY;
+ALTER TABLE topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 
@@ -143,6 +154,10 @@ CREATE POLICY "Allow all operations on group_judges" ON group_judges
 
 -- Criteria policies
 CREATE POLICY "Allow all operations on criteria" ON criteria
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- Topics policies
+CREATE POLICY "Allow all operations on topics" ON topics
     FOR ALL USING (true) WITH CHECK (true);
 
 -- Scores policies
