@@ -6,16 +6,9 @@
 const JudgeView = {
     currentStudentId: null,
     currentScores: {},
+    currentNotes: '',
     selectedGradeId: null,
     _listenersInitialized: false,
-    // Stopwatch state
-    stopwatch: {
-        elapsedSeconds: 0,
-        timerInterval: null,
-        isRunning: false,
-        isPaused: false,
-        timeLimitSeconds: null
-    },
 
     async init() {
         this.setupEventListeners();
@@ -61,23 +54,40 @@ const JudgeView = {
             });
         });
 
+        // Notes modal handlers
+        document.getElementById('notes-modal-close').addEventListener('click', () => {
+            this.hideNotesModal();
+        });
+
+        document.getElementById('notes-modal-cancel').addEventListener('click', () => {
+            this.hideNotesModal();
+        });
+
+        document.getElementById('notes-modal-save').addEventListener('click', () => {
+            this.saveNotesFromModal().catch(error => {
+                console.error('Error saving notes:', error);
+            });
+        });
+
+        // Close modal when clicking overlay
+        document.getElementById('notes-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'notes-modal') {
+                this.hideNotesModal();
+            }
+        });
+
+        // Track notes textarea changes
+        const notesTextarea = document.getElementById('judge-notes-input');
+        if (notesTextarea) {
+            notesTextarea.addEventListener('input', (e) => {
+                this.currentNotes = e.target.value;
+            });
+        }
+
         // Logout
         document.getElementById('judge-logout').addEventListener('click', () => {
             AuthManager.logout();
             App.showView('login');
-        });
-
-        // Stopwatch controls
-        document.getElementById('stopwatch-start-stop').addEventListener('click', () => {
-            this.startStopStopwatch();
-        });
-
-        document.getElementById('stopwatch-pause').addEventListener('click', () => {
-            this.pauseStopwatch();
-        });
-
-        document.getElementById('stopwatch-reset').addEventListener('click', () => {
-            this.resetStopwatch();
         });
 
         this._listenersInitialized = true;
@@ -180,6 +190,7 @@ const JudgeView = {
     },
 
     async selectGrade(groupId) {
+        // Set selected grade first
         this.selectedGradeId = groupId;
         
         // Update visual state of grade capsules
@@ -195,6 +206,16 @@ const JudgeView = {
             });
         }
         
+        // Clear current student selection if it's not in the selected grade
+        if (this.currentStudentId) {
+            const students = await DataManager.getStudents();
+            const student = students.find(s => s.id === this.currentStudentId);
+            if (student && student.group_id !== groupId) {
+                document.getElementById('judge-student-select').value = '';
+                await this.selectStudent('');
+            }
+        }
+        
         // Fetch and display topics for selected grade
         const topics = await DataManager.getTopicsByGroup(groupId);
         await this.renderTopics(topics, groupId);
@@ -206,19 +227,8 @@ const JudgeView = {
         const students = await GroupManager.getStudentsForJudge(user.id);
         await this.renderStudentSelect(students);
         
-        // Clear current student selection if it's not in the selected grade
-        if (this.currentStudentId) {
-            const students = await DataManager.getStudents();
-            const student = students.find(s => s.id === this.currentStudentId);
-            if (student && student.group_id !== groupId) {
-                document.getElementById('judge-student-select').value = '';
-                this.selectStudent('').catch(error => {
-                    console.error('Error clearing student selection:', error);
-                });
-            }
-        }
-        
         // Refresh scored students list to show only students from selected grade
+        // This must be called after selectedGradeId is set and student dropdown is updated
         await this.renderScoredStudents();
     },
 
@@ -248,9 +258,8 @@ const JudgeView = {
     async selectStudent(studentId) {
         if (!studentId) {
             document.getElementById('judge-scoring-section').style.display = 'none';
-            document.getElementById('stopwatch-container').style.display = 'none';
             this.currentStudentId = null;
-            this.resetStopwatch();
+            this.currentNotes = '';
             return;
         }
 
@@ -262,18 +271,23 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             const submitted = await DataManager.isSubmitted(studentId, user.id);
 
-            // Initialize stopwatch with topic time limit
-            await this.initializeStopwatch(student.group_id);
-
             document.getElementById('current-student-name').textContent = student.name;
             document.getElementById('judge-scoring-section').style.display = 'block';
-            document.getElementById('stopwatch-container').style.display = 'block';
 
             // Load existing scores
             this.currentScores = {};
             for (const criterion of criteria) {
                 const score = await DataManager.getScore(studentId, user.id, criterion.id);
                 this.currentScores[criterion.id] = score || '';
+            }
+
+            // Load existing notes
+            const existingNotes = await DataManager.getNote(studentId, user.id);
+            this.currentNotes = existingNotes || '';
+            const notesTextarea = document.getElementById('judge-notes-input');
+            if (notesTextarea) {
+                notesTextarea.value = this.currentNotes;
+                notesTextarea.disabled = false; // Notes can always be edited
             }
 
             // Render criteria inputs
@@ -288,11 +302,13 @@ const JudgeView = {
                         type="number" 
                         min="1" 
                         max="10" 
+                        step="1"
                         value="${score}" 
                         data-criterion-id="${criterion.id}"
                         ${disabled}
                         class="score-input"
                         onchange="JudgeView.updateScore('${criterion.id}', this.value)"
+                        oninput="JudgeView.updateScore('${criterion.id}', this.value)"
                     >
                 </div>
             `;
@@ -311,6 +327,7 @@ const JudgeView = {
             }
 
             this.calculateTotal();
+            this.updateButtonStates();
         } catch (error) {
             console.error('Error selecting student:', error);
             alert('Error loading student. Please try again.');
@@ -320,16 +337,99 @@ const JudgeView = {
     updateScore(criterionId, value) {
         if (!this.currentStudentId) return;
 
-        const score = parseInt(value);
-        if (isNaN(score) || score < 1 || score > 10) {
-            if (value !== '') {
-                alert('Score must be between 1 and 10');
-                return;
+        const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
+        
+        // If value is empty, clear the score
+        if (value === '' || value === null || value === undefined) {
+            this.currentScores[criterionId] = null;
+            if (inputElement) {
+                inputElement.value = '';
+                inputElement.classList.remove('invalid-score');
             }
+            this.calculateTotal();
+            this.updateButtonStates();
+            return;
         }
 
-        this.currentScores[criterionId] = value ? score : null;
+        const score = parseInt(value);
+        
+        // Validate score range
+        if (isNaN(score) || score < 1 || score > 10) {
+            // Clear invalid score from storage
+            this.currentScores[criterionId] = null;
+            
+            // Clear and focus the input field
+            if (inputElement) {
+                inputElement.value = '';
+                inputElement.classList.add('invalid-score');
+                inputElement.focus();
+                alert('Score must be between 1 and 10. Please enter a valid score.');
+            }
+            this.calculateTotal();
+            this.updateButtonStates();
+            return;
+        }
+
+        // Valid score - store it and remove invalid class
+        this.currentScores[criterionId] = score;
+        if (inputElement) {
+            inputElement.classList.remove('invalid-score');
+        }
         this.calculateTotal();
+        this.updateButtonStates();
+    },
+
+    /**
+     * Validate all scores are within valid range (1-10)
+     * @returns {Object} Validation result with isValid flag and invalidCriteria array
+     */
+    validateAllScores() {
+        const invalidCriteria = [];
+        
+        for (const criterionId in this.currentScores) {
+            const score = this.currentScores[criterionId];
+            if (score !== null && score !== undefined && score !== '') {
+                const numScore = parseInt(score);
+                if (isNaN(numScore) || numScore < 1 || numScore > 10) {
+                    invalidCriteria.push(criterionId);
+                }
+            }
+        }
+        
+        return {
+            isValid: invalidCriteria.length === 0,
+            invalidCriteria: invalidCriteria
+        };
+    },
+
+    /**
+     * Update button states based on score validation
+     */
+    updateButtonStates() {
+        const validation = this.validateAllScores();
+        const submitBtn = document.getElementById('submit-scores');
+        const saveBtn = document.getElementById('save-scores');
+        
+        if (!submitBtn || !saveBtn) return;
+        
+        // Check if student is already submitted
+        const isDisabled = submitBtn.disabled && submitBtn.textContent.includes('Locked');
+        
+        if (validation.isValid || isDisabled) {
+            // Valid scores or already submitted - enable buttons (if not submitted)
+            if (!isDisabled) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-disabled');
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('btn-disabled');
+            }
+        } else {
+            // Invalid scores - disable buttons
+            submitBtn.disabled = true;
+            submitBtn.classList.add('btn-disabled');
+            saveBtn.disabled = true;
+            saveBtn.classList.add('btn-disabled');
+        }
     },
 
     calculateTotal() {
@@ -345,15 +445,47 @@ const JudgeView = {
             return;
         }
 
+        // Validate all scores before saving
+        const validation = this.validateAllScores();
+        if (!validation.isValid) {
+            const invalidInputs = validation.invalidCriteria.map(id => {
+                const input = document.querySelector(`input[data-criterion-id="${id}"]`);
+                return input ? input.closest('.criterion-score-item')?.querySelector('label')?.textContent : 'Unknown';
+            }).filter(Boolean);
+            
+            alert(`Please enter valid scores (1-10) for all criteria before saving.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            
+            // Focus on first invalid input
+            if (validation.invalidCriteria.length > 0) {
+                const firstInvalid = document.querySelector(`input[data-criterion-id="${validation.invalidCriteria[0]}"]`);
+                if (firstInvalid) {
+                    firstInvalid.focus();
+                }
+            }
+            return;
+        }
+
         try {
             const user = await AuthManager.getCurrentUser();
             const criteria = await DataManager.getCriteria();
 
+            // Save scores (only valid ones)
             for (const criterion of criteria) {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
-                    await DataManager.setScore(this.currentStudentId, user.id, criterion.id, score);
+                    const numScore = parseInt(score);
+                    // Double-check validation before saving
+                    if (!isNaN(numScore) && numScore >= 1 && numScore <= 10) {
+                        await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                    }
                 }
+            }
+
+            // Save notes
+            const notesTextarea = document.getElementById('judge-notes-input');
+            if (notesTextarea) {
+                this.currentNotes = notesTextarea.value || '';
+                await DataManager.setNote(this.currentStudentId, user.id, this.currentNotes);
             }
 
             alert('Draft saved successfully!');
@@ -367,6 +499,26 @@ const JudgeView = {
     async submitScores() {
         if (!this.currentStudentId) {
             alert('Please select a student first');
+            return;
+        }
+
+        // Validate all scores are within valid range before submitting
+        const validation = this.validateAllScores();
+        if (!validation.isValid) {
+            const invalidInputs = validation.invalidCriteria.map(id => {
+                const input = document.querySelector(`input[data-criterion-id="${id}"]`);
+                return input ? input.closest('.criterion-score-item')?.querySelector('label')?.textContent : 'Unknown';
+            }).filter(Boolean);
+            
+            alert(`Please enter valid scores (1-10) for all criteria before submitting.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            
+            // Focus on first invalid input
+            if (validation.invalidCriteria.length > 0) {
+                const firstInvalid = document.querySelector(`input[data-criterion-id="${validation.invalidCriteria[0]}"]`);
+                if (firstInvalid) {
+                    firstInvalid.focus();
+                }
+            }
             return;
         }
 
@@ -386,12 +538,23 @@ const JudgeView = {
                 }
             }
 
-            // Save all scores
+            // Save all scores (only valid ones)
             for (const criterion of criteria) {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
-                    await DataManager.setScore(this.currentStudentId, user.id, criterion.id, score);
+                    const numScore = parseInt(score);
+                    // Double-check validation before saving
+                    if (!isNaN(numScore) && numScore >= 1 && numScore <= 10) {
+                        await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                    }
                 }
+            }
+
+            // Save notes
+            const notesTextarea = document.getElementById('judge-notes-input');
+            if (notesTextarea) {
+                this.currentNotes = notesTextarea.value || '';
+                await DataManager.setNote(this.currentStudentId, user.id, this.currentNotes);
             }
 
             // Mark as submitted
@@ -410,6 +573,14 @@ const JudgeView = {
         try {
             const user = await AuthManager.getCurrentUser();
             const container = document.getElementById('scored-students-list');
+            
+            if (!container) {
+                console.error('Scored students container not found');
+                return;
+            }
+            
+            // Clear container immediately to prevent showing stale data
+            container.innerHTML = '<p class="empty-message">Loading...</p>';
             
             // Check if judge has multiple grades and no grade is selected
             const groups = await DataManager.getGroups();
@@ -460,6 +631,10 @@ const JudgeView = {
                     }
                 }
 
+                const viewNotesButton = submitted ? 
+                    `<button class="btn btn-sm btn-primary" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')" style="margin-top: 10px;">View Notes</button>` : 
+                    '';
+
                 return `
                     <div class="scored-student-card ${submitted ? 'submitted' : 'draft'}">
                         <div class="scored-student-info">
@@ -471,6 +646,7 @@ const JudgeView = {
                         <div class="scored-student-total">
                             Total: <strong>${total}</strong>
                         </div>
+                        ${viewNotesButton}
                     </div>
                 `;
             }));
@@ -479,175 +655,79 @@ const JudgeView = {
         } catch (error) {
             console.error('Error rendering scored students:', error);
             const container = document.getElementById('scored-students-list');
-            container.innerHTML = '<p class="empty-message">Error loading scored students.</p>';
+            if (container) {
+                container.innerHTML = '<p class="empty-message">Error loading scored students.</p>';
+            }
         }
     },
 
     /**
-     * Initialize stopwatch with topic time limit for the selected grade
+     * Show notes modal for viewing/editing notes
      */
-    async initializeStopwatch(groupId) {
+    async showNotesModal(studentId, studentName) {
         try {
-            // Reset stopwatch first
-            this.resetStopwatch();
+            const user = await AuthManager.getCurrentUser();
+            if (!user) return;
 
-            // Get topics for the grade
-            const topics = await DataManager.getTopicsByGroup(groupId);
-            
-            // Get time limit from first topic (one topic per grade)
-            if (topics && topics.length > 0 && topics[0].time_limit) {
-                // Convert minutes to seconds
-                this.stopwatch.timeLimitSeconds = topics[0].time_limit * 60;
-            } else {
-                this.stopwatch.timeLimitSeconds = null;
+            const notes = await DataManager.getNote(studentId, user.id);
+            const modal = document.getElementById('notes-modal');
+            const modalTitle = document.getElementById('notes-modal-title');
+            const modalTextarea = document.getElementById('notes-modal-textarea');
+
+            modalTitle.textContent = `Notes for ${studentName}`;
+            modalTextarea.value = notes || '';
+            modal.dataset.studentId = studentId;
+            modal.style.display = 'flex';
+        } catch (error) {
+            console.error('Error showing notes modal:', error);
+            alert('Error loading notes. Please try again.');
+        }
+    },
+
+    /**
+     * Hide notes modal
+     */
+    hideNotesModal() {
+        const modal = document.getElementById('notes-modal');
+        modal.style.display = 'none';
+        delete modal.dataset.studentId;
+    },
+
+    /**
+     * Save notes from modal
+     */
+    async saveNotesFromModal() {
+        try {
+            const modal = document.getElementById('notes-modal');
+            const studentId = modal.dataset.studentId;
+            const modalTextarea = document.getElementById('notes-modal-textarea');
+
+            if (!studentId) {
+                alert('Error: Student ID not found');
+                return;
             }
 
-            // Update display immediately
-            this.updateStopwatchDisplay();
+            const user = await AuthManager.getCurrentUser();
+            if (!user) return;
+
+            const notes = modalTextarea.value || '';
+            await DataManager.setNote(studentId, user.id, notes);
+
+            // If this is the currently selected student, update the main textarea
+            if (this.currentStudentId === studentId) {
+                const notesTextarea = document.getElementById('judge-notes-input');
+                if (notesTextarea) {
+                    notesTextarea.value = notes;
+                    this.currentNotes = notes;
+                }
+            }
+
+            alert('Notes saved successfully!');
+            this.hideNotesModal();
+            await this.renderScoredStudents();
         } catch (error) {
-            console.error('Error initializing stopwatch:', error);
-            this.stopwatch.timeLimitSeconds = null;
-            this.updateStopwatchDisplay();
-        }
-    },
-
-    /**
-     * Start or stop the stopwatch
-     */
-    startStopStopwatch() {
-        if (this.stopwatch.isRunning) {
-            this.stopStopwatch();
-        } else if (this.stopwatch.isPaused) {
-            // Resume from pause
-            this.startStopwatch();
-        } else {
-            // Start fresh
-            this.startStopwatch();
-        }
-    },
-
-    /**
-     * Start the stopwatch
-     */
-    startStopwatch() {
-        if (this.stopwatch.isRunning) return;
-
-        this.stopwatch.isRunning = true;
-        this.stopwatch.isPaused = false;
-
-        const startBtn = document.getElementById('stopwatch-start-stop');
-        startBtn.textContent = 'Stop';
-        startBtn.classList.remove('btn-primary');
-        startBtn.classList.add('btn-danger');
-
-        this.stopwatch.timerInterval = setInterval(() => {
-            this.stopwatch.elapsedSeconds++;
-            this.updateStopwatchDisplay();
-            this.checkTimeLimit();
-        }, 1000);
-    },
-
-    /**
-     * Pause the stopwatch
-     */
-    pauseStopwatch() {
-        if (!this.stopwatch.isRunning) return;
-
-        this.stopwatch.isRunning = false;
-        this.stopwatch.isPaused = true;
-
-        const startBtn = document.getElementById('stopwatch-start-stop');
-        startBtn.textContent = 'Resume';
-        startBtn.classList.remove('btn-danger');
-        startBtn.classList.add('btn-primary');
-
-        if (this.stopwatch.timerInterval) {
-            clearInterval(this.stopwatch.timerInterval);
-            this.stopwatch.timerInterval = null;
-        }
-    },
-
-    /**
-     * Stop the stopwatch
-     */
-    stopStopwatch() {
-        this.stopwatch.isRunning = false;
-        this.stopwatch.isPaused = false;
-
-        const startBtn = document.getElementById('stopwatch-start-stop');
-        startBtn.textContent = 'Start';
-        startBtn.classList.remove('btn-danger');
-        startBtn.classList.add('btn-primary');
-
-        if (this.stopwatch.timerInterval) {
-            clearInterval(this.stopwatch.timerInterval);
-            this.stopwatch.timerInterval = null;
-        }
-    },
-
-    /**
-     * Reset the stopwatch to 00:00
-     */
-    resetStopwatch() {
-        this.stopStopwatch();
-        this.stopwatch.elapsedSeconds = 0;
-        this.stopwatch.isPaused = false;
-        this.updateStopwatchDisplay();
-        this.removeTimeLimitWarning();
-        
-        // Reset button text
-        const startBtn = document.getElementById('stopwatch-start-stop');
-        if (startBtn) {
-            startBtn.textContent = 'Start';
-            startBtn.classList.remove('btn-danger');
-            startBtn.classList.add('btn-primary');
-        }
-    },
-
-    /**
-     * Update the stopwatch display
-     */
-    updateStopwatchDisplay() {
-        const minutes = Math.floor(this.stopwatch.elapsedSeconds / 60);
-        const seconds = this.stopwatch.elapsedSeconds % 60;
-        const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        
-        const timeDisplay = document.getElementById('stopwatch-time');
-        if (timeDisplay) {
-            timeDisplay.textContent = timeString;
-        }
-    },
-
-    /**
-     * Check if elapsed time exceeds the time limit and apply warning styles
-     */
-    checkTimeLimit() {
-        if (this.stopwatch.timeLimitSeconds === null) return;
-
-        if (this.stopwatch.elapsedSeconds > this.stopwatch.timeLimitSeconds) {
-            this.applyTimeLimitWarning();
-        } else {
-            this.removeTimeLimitWarning();
-        }
-    },
-
-    /**
-     * Apply red color and blinking animation when time limit is exceeded
-     */
-    applyTimeLimitWarning() {
-        const timeDisplay = document.getElementById('stopwatch-time');
-        if (timeDisplay) {
-            timeDisplay.classList.add('stopwatch-over-limit');
-        }
-    },
-
-    /**
-     * Remove warning styles when time is within limit
-     */
-    removeTimeLimitWarning() {
-        const timeDisplay = document.getElementById('stopwatch-time');
-        if (timeDisplay) {
-            timeDisplay.classList.remove('stopwatch-over-limit');
+            console.error('Error saving notes:', error);
+            alert('Error saving notes. Please try again.');
         }
     }
 };

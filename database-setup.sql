@@ -89,6 +89,17 @@ CREATE TABLE IF NOT EXISTS submissions (
     UNIQUE(student_id, judge_id)
 );
 
+-- Create judge_notes table
+CREATE TABLE IF NOT EXISTS judge_notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    judge_id UUID NOT NULL REFERENCES judges(id) ON DELETE CASCADE,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(student_id, judge_id)
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_students_group_id ON students(group_id);
 CREATE INDEX IF NOT EXISTS idx_group_judges_group_id ON group_judges(group_id);
@@ -99,6 +110,8 @@ CREATE INDEX IF NOT EXISTS idx_scores_criterion_id ON scores(criterion_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_id ON submissions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_judge_id ON submissions(judge_id);
 CREATE INDEX IF NOT EXISTS idx_topics_group_id ON topics(group_id);
+CREATE INDEX IF NOT EXISTS idx_judge_notes_student_id ON judge_notes(student_id);
+CREATE INDEX IF NOT EXISTS idx_judge_notes_judge_id ON judge_notes(judge_id);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -113,6 +126,10 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_scores_updated_at BEFORE UPDATE ON scores
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Create trigger for judge_notes table
+CREATE TRIGGER update_judge_notes_updated_at BEFORE UPDATE ON judge_notes
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE judges ENABLE ROW LEVEL SECURITY;
@@ -124,6 +141,7 @@ ALTER TABLE criteria ENABLE ROW LEVEL SECURITY;
 ALTER TABLE topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE judge_notes ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public read/write access (adjust based on your security needs)
 -- For now, allowing all operations. In production, you should restrict based on user roles.
@@ -166,6 +184,10 @@ CREATE POLICY "Allow all operations on scores" ON scores
 
 -- Submissions policies
 CREATE POLICY "Allow all operations on submissions" ON submissions
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- Judge notes policies
+CREATE POLICY "Allow all operations on judge_notes" ON judge_notes
     FOR ALL USING (true) WITH CHECK (true);
 
 -- Insert default admin user (password: admin)

@@ -725,6 +725,47 @@ const SupabaseService = {
             console.error('Error fetching all submissions:', error);
             throw error;
         }
+    },
+
+    // ==================== JUDGE NOTES ====================
+    
+    async getNote(studentId, judgeId) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('judge_notes')
+                .select('notes')
+                .eq('student_id', studentId)
+                .eq('judge_id', judgeId)
+                .maybeSingle();
+            
+            if (error) throw error;
+            return data ? data.notes : null;
+        } catch (error) {
+            console.error('Error fetching note:', error);
+            throw error;
+        }
+    },
+
+    async setNote(studentId, judgeId, notes) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('judge_notes')
+                .upsert({
+                    student_id: studentId,
+                    judge_id: judgeId,
+                    notes: notes || null
+                }, {
+                    onConflict: 'student_id,judge_id'
+                })
+                .select()
+                .single();
+            
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error setting note:', error);
+            throw error;
+        }
     }
 };
 

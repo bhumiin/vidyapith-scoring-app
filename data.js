@@ -375,6 +375,27 @@ const DataManager = {
         }
     },
 
+    // ==================== JUDGE NOTES ====================
+
+    async getNote(studentId, judgeId) {
+        try {
+            const note = await SupabaseService.getNote(studentId, judgeId);
+            return note;
+        } catch (error) {
+            console.error('Error getting note:', error);
+            return null;
+        }
+    },
+
+    async setNote(studentId, judgeId, notes) {
+        try {
+            await SupabaseService.setNote(studentId, judgeId, notes);
+        } catch (error) {
+            console.error('Error setting note:', error);
+            throw error;
+        }
+    },
+
     // ==================== UTILITY FUNCTIONS ====================
 
     generateId() {
