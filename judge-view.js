@@ -20,10 +20,23 @@ const JudgeView = {
             return;
         }
         // Student selection
-        document.getElementById('judge-student-select').addEventListener('change', (e) => {
+        const studentSelect = document.getElementById('judge-student-select');
+        studentSelect.addEventListener('change', (e) => {
             this.selectStudent(e.target.value).catch(error => {
                 console.error('Error selecting student:', error);
             });
+        });
+
+        // Refresh dropdown when clicked to show current status
+        studentSelect.addEventListener('mousedown', async () => {
+            try {
+                const user = await AuthManager.getCurrentUser();
+                if (!user) return;
+                const students = await GroupManager.getStudentsForJudge(user.id);
+                await this.renderStudentSelect(students);
+            } catch (error) {
+                console.error('Error refreshing student dropdown:', error);
+            }
         });
 
         // Grade capsule clicks (delegated event handling)
@@ -162,6 +175,9 @@ const JudgeView = {
     async renderStudentSelect(students) {
         const select = document.getElementById('judge-student-select');
         
+        // Preserve currently selected value
+        const currentSelectedValue = select.value;
+        
         // Filter students by selected grade if one is selected
         let filtered = students;
         if (this.selectedGradeId) {
@@ -182,11 +198,33 @@ const JudgeView = {
 
         const options = await Promise.all(filtered.map(async student => {
             const submitted = await DataManager.isSubmitted(student.id, user.id);
-            const status = submitted ? ' (Submitted)' : '';
+            let status = '';
+            if (submitted) {
+                status = ' (Submitted)';
+            } else {
+                // Check if student has draft scores
+                const criteria = await DataManager.getCriteria();
+                let hasScore = false;
+                for (const criterion of criteria) {
+                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
+                    if (score !== null) {
+                        hasScore = true;
+                        break;
+                    }
+                }
+                if (hasScore) {
+                    status = ' (Draft)';
+                }
+            }
             return `<option value="${student.id}">${student.name}${status}</option>`;
         }));
 
         select.innerHTML = '<option value="">-- Select a student --</option>' + options.join('');
+        
+        // Restore previously selected value if it still exists
+        if (currentSelectedValue && select.querySelector(`option[value="${currentSelectedValue}"]`)) {
+            select.value = currentSelectedValue;
+        }
     },
 
     async selectGrade(groupId) {
@@ -985,9 +1023,7 @@ const JudgeView = {
                     }
                 }
 
-                const viewNotesButton = submitted ? 
-                    `<button class="btn btn-sm btn-primary" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')" style="margin-top: 10px;">View Notes</button>` : 
-                    '';
+                const viewNotesButton = `<button class="btn btn-sm btn-primary" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')" style="margin-top: 10px;">View Notes</button>`;
 
                 return `
                     <div class="scored-student-card ${submitted ? 'submitted' : 'draft'}">

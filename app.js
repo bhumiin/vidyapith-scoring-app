@@ -31,7 +31,8 @@ const App = {
             const result = await AuthManager.login(username, password, role);
             if (result.success) {
                 this.showLoginError('');
-                this.routeToView();
+                // Force page reload to clear all cached state and reinitialize views
+                window.location.reload(true);
             } else {
                 this.showLoginError(result.error || 'Invalid credentials');
             }
