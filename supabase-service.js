@@ -440,33 +440,109 @@ const SupabaseService = {
         }
     },
 
-    // ==================== CRITERIA ====================
+    // ==================== CRITERION GROUPS ====================
     
-    async getCriteria() {
+    async getCriterionGroups() {
         try {
             const { data, error } = await getSupabaseClient()
-                .from('criteria')
+                .from('criterion_groups')
                 .select('*')
                 .order('name');
             
             if (error) throw error;
             return data || [];
         } catch (error) {
-            console.error('Error fetching criteria:', error);
+            console.error('Error fetching criterion groups:', error);
             throw error;
         }
     },
 
-    async addCriterion(name) {
+    async addCriterionGroup(name, isPenalty = false) {
         try {
             const { data, error } = await getSupabaseClient()
-                .from('criteria')
-                .insert([{ name: name.trim() }])
+                .from('criterion_groups')
+                .insert([{ 
+                    name: name.trim(),
+                    is_penalty: isPenalty
+                }])
                 .select()
                 .single();
             
             if (error) throw error;
             return data;
+        } catch (error) {
+            console.error('Error adding criterion group:', error);
+            throw error;
+        }
+    },
+
+    // ==================== CRITERIA ====================
+    
+    async getCriteria() {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('criteria')
+                .select(`
+                    *,
+                    criterion_groups (
+                        id,
+                        name,
+                        is_penalty
+                    )
+                `)
+                .order('name');
+            
+            if (error) throw error;
+            // Flatten the group data into the criterion object
+            return (data || []).map(criterion => ({
+                ...criterion,
+                group: criterion.criterion_groups ? {
+                    id: criterion.criterion_groups.id,
+                    name: criterion.criterion_groups.name,
+                    is_penalty: criterion.criterion_groups.is_penalty
+                } : null
+            }));
+        } catch (error) {
+            console.error('Error fetching criteria:', error);
+            throw error;
+        }
+    },
+
+    async addCriterion(name, groupId = null, minScore = 1, maxScore = 10) {
+        try {
+            const insertData = {
+                name: name.trim(),
+                min_score: minScore,
+                max_score: maxScore
+            };
+            
+            if (groupId) {
+                insertData.group_id = groupId;
+            }
+            
+            const { data, error } = await getSupabaseClient()
+                .from('criteria')
+                .insert([insertData])
+                .select(`
+                    *,
+                    criterion_groups (
+                        id,
+                        name,
+                        is_penalty
+                    )
+                `)
+                .single();
+            
+            if (error) throw error;
+            // Flatten the group data
+            return {
+                ...data,
+                group: data.criterion_groups ? {
+                    id: data.criterion_groups.id,
+                    name: data.criterion_groups.name,
+                    is_penalty: data.criterion_groups.is_penalty
+                } : null
+            };
         } catch (error) {
             console.error('Error adding criterion:', error);
             throw error;

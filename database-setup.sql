@@ -52,10 +52,21 @@ CREATE TABLE IF NOT EXISTS group_judges (
     PRIMARY KEY (group_id, judge_id)
 );
 
+-- Create criterion_groups table
+CREATE TABLE IF NOT EXISTS criterion_groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT UNIQUE NOT NULL,
+    is_penalty BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create criteria table
 CREATE TABLE IF NOT EXISTS criteria (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
+    group_id UUID REFERENCES criterion_groups(id) ON DELETE SET NULL,
+    min_score INTEGER DEFAULT 1,
+    max_score INTEGER DEFAULT 10,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -112,6 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_submissions_judge_id ON submissions(judge_id);
 CREATE INDEX IF NOT EXISTS idx_topics_group_id ON topics(group_id);
 CREATE INDEX IF NOT EXISTS idx_judge_notes_student_id ON judge_notes(student_id);
 CREATE INDEX IF NOT EXISTS idx_judge_notes_judge_id ON judge_notes(judge_id);
+CREATE INDEX IF NOT EXISTS idx_criteria_group_id ON criteria(group_id);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -142,6 +154,7 @@ ALTER TABLE topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE judge_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE criterion_groups ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public read/write access (adjust based on your security needs)
 -- For now, allowing all operations. In production, you should restrict based on user roles.
@@ -190,6 +203,10 @@ CREATE POLICY "Allow all operations on submissions" ON submissions
 CREATE POLICY "Allow all operations on judge_notes" ON judge_notes
     FOR ALL USING (true) WITH CHECK (true);
 
+-- Criterion groups policies
+CREATE POLICY "Allow all operations on criterion_groups" ON criterion_groups
+    FOR ALL USING (true) WITH CHECK (true);
+
 -- Insert default admin user (password: admin)
 -- Password hash for "admin" using bcrypt (you should change this!)
 -- This is a placeholder - you'll need to generate a proper bcrypt hash
@@ -199,3 +216,53 @@ INSERT INTO admin_users (username, password_hash)
 VALUES ('admin', '$2a$10$placeholder_change_this_hash') 
 ON CONFLICT (username) DO NOTHING;
 
+-- Insert criterion groups
+INSERT INTO criterion_groups (name, is_penalty) 
+VALUES 
+    ('Content', FALSE),
+    ('Language', FALSE),
+    ('Presentation', FALSE),
+    ('Preparation', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- Migration: Update existing criteria to link to groups and set score ranges
+-- Note: This assumes criteria names match exactly. Adjust as needed for your data.
+-- Content group criteria (1-5)
+UPDATE criteria 
+SET group_id = (SELECT id FROM criterion_groups WHERE name = 'Content' LIMIT 1),
+    min_score = 1,
+    max_score = 5
+WHERE name IN ('Ideas Examples', 'Relate to topic and reflect')
+AND group_id IS NULL;
+
+-- Content group criteria (1-10)
+UPDATE criteria 
+SET group_id = (SELECT id FROM criterion_groups WHERE name = 'Content' LIMIT 1),
+    min_score = 1,
+    max_score = 10
+WHERE name = 'Values based examples'
+AND group_id IS NULL;
+
+-- Language group criteria (1-10)
+UPDATE criteria 
+SET group_id = (SELECT id FROM criterion_groups WHERE name = 'Language' LIMIT 1),
+    min_score = 1,
+    max_score = 10
+WHERE name = 'Creativity Language'
+AND group_id IS NULL;
+
+-- Presentation group criteria (1-10)
+UPDATE criteria 
+SET group_id = (SELECT id FROM criterion_groups WHERE name = 'Presentation' LIMIT 1),
+    min_score = 1,
+    max_score = 10
+WHERE name = 'Confidence Style Effectiveness'
+AND group_id IS NULL;
+
+-- Preparation group criteria (1-5) - penalty group
+UPDATE criteria 
+SET group_id = (SELECT id FROM criterion_groups WHERE name = 'Preparation' LIMIT 1),
+    min_score = 1,
+    max_score = 5
+WHERE name IN ('Reading Sentences', 'Overtime (contd. after 2nd bell)')
+AND group_id IS NULL;

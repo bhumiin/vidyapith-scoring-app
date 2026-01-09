@@ -181,6 +181,29 @@ const DataManager = {
         this._cache.groups = groups;
     },
 
+    // ==================== CRITERION GROUPS ====================
+
+    async getCriterionGroups() {
+        try {
+            const groups = await SupabaseService.getCriterionGroups();
+            return groups;
+        } catch (error) {
+            console.error('Error getting criterion groups:', error);
+            return [];
+        }
+    },
+
+    async addCriterionGroup(name, isPenalty = false) {
+        try {
+            const newGroup = await SupabaseService.addCriterionGroup(name, isPenalty);
+            await this.refreshCache();
+            return newGroup;
+        } catch (error) {
+            console.error('Error adding criterion group:', error);
+            throw error;
+        }
+    },
+
     // ==================== CRITERIA ====================
 
     async getCriteria() {
@@ -194,14 +217,84 @@ const DataManager = {
         }
     },
 
+    /**
+     * Get criteria organized by group
+     * @returns {Array} Array of group objects with criteria, ordered by group name
+     */
+    async getCriteriaByGroup() {
+        try {
+            const criteria = await this.getCriteria();
+            const groups = await this.getCriterionGroups();
+            
+            // Define preferred order for groups
+            const groupOrder = ['Content', 'Language', 'Presentation', 'Preparation'];
+            
+            // Sort groups by preferred order, then alphabetically
+            const sortedGroups = groups.sort((a, b) => {
+                const aIndex = groupOrder.indexOf(a.name);
+                const bIndex = groupOrder.indexOf(b.name);
+                
+                if (aIndex !== -1 && bIndex !== -1) {
+                    return aIndex - bIndex;
+                }
+                if (aIndex !== -1) return -1;
+                if (bIndex !== -1) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            
+            const grouped = {};
+            
+            // Initialize groups in sorted order
+            sortedGroups.forEach(group => {
+                grouped[group.id] = {
+                    group: group,
+                    criteria: []
+                };
+            });
+            
+            // Add ungrouped criteria
+            grouped['ungrouped'] = {
+                group: { id: null, name: 'Ungrouped', is_penalty: false },
+                criteria: []
+            };
+            
+            // Organize criteria by group
+            criteria.forEach(criterion => {
+                if (criterion.group_id && grouped[criterion.group_id]) {
+                    grouped[criterion.group_id].criteria.push(criterion);
+                } else {
+                    grouped['ungrouped'].criteria.push(criterion);
+                }
+            });
+            
+            // Return as array, maintaining order and filtering out empty groups
+            const result = [];
+            sortedGroups.forEach(group => {
+                if (grouped[group.id] && grouped[group.id].criteria.length > 0) {
+                    result.push(grouped[group.id]);
+                }
+            });
+            
+            // Add ungrouped if any
+            if (grouped['ungrouped'].criteria.length > 0) {
+                result.push(grouped['ungrouped']);
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('Error getting criteria by group:', error);
+            return [];
+        }
+    },
+
     saveCriteria(criteria) {
         // No-op: Supabase handles persistence automatically
         this._cache.criteria = criteria;
     },
 
-    async addCriterion(name) {
+    async addCriterion(name, groupId = null, minScore = 1, maxScore = 10) {
         try {
-            const newCriterion = await SupabaseService.addCriterion(name);
+            const newCriterion = await SupabaseService.addCriterion(name, groupId, minScore, maxScore);
             await this.refreshCache();
             return newCriterion;
         } catch (error) {

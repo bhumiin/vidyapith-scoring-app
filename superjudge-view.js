@@ -217,23 +217,124 @@ const SuperJudgeView = {
             const judges = await DataManager.getJudges();
             const criteria = await DataManager.getCriteria();
 
+            // Helper function to organize criteria in the same order as Judge view
+            const criteriaGroupMapping = {
+                'Content': {
+                    criteriaNames: ['Ideas Examples', 'Ideas Example', 'Values based examples', 'Relate to topic and reflect'],
+                    keywords: ['ideas', 'values', 'relate to topic']
+                },
+                'Language': {
+                    criteriaNames: ['Creativity Language'],
+                    keywords: ['creativity language', 'language']
+                },
+                'Presentation': {
+                    criteriaNames: ['Confidence Style Effectiveness'],
+                    keywords: ['confidence', 'style', 'effectiveness', 'presentation']
+                },
+                'Preparation': {
+                    criteriaNames: ['Reading Sentences', 'Overtime (contd. after 2nd bell)'],
+                    keywords: ['reading', 'sentences', 'overtime', 'preparation']
+                }
+            };
+            
+            const groupOrder = ['Content', 'Language', 'Presentation', 'Preparation'];
+            
+            const organizeCriteria = (criteriaList) => {
+                // Organize criteria into groups
+                const groupedCriteria = {};
+                groupOrder.forEach(groupName => {
+                    groupedCriteria[groupName] = [];
+                });
+                groupedCriteria['Ungrouped'] = [];
+                
+                // Assign criteria to groups
+                criteriaList.forEach(criterion => {
+                    let assigned = false;
+                    const criterionNameLower = criterion.name.toLowerCase();
+                    
+                    for (const groupName in criteriaGroupMapping) {
+                        const groupMapping = criteriaGroupMapping[groupName];
+                        
+                        const exactMatch = groupMapping.criteriaNames.some(name => 
+                            criterionNameLower === name.toLowerCase() ||
+                            criterionNameLower.includes(name.toLowerCase()) || 
+                            name.toLowerCase().includes(criterionNameLower)
+                        );
+                        
+                        const keywordMatch = groupMapping.keywords && groupMapping.keywords.some(keyword => 
+                            criterionNameLower.includes(keyword.toLowerCase())
+                        );
+                        
+                        if (exactMatch || keywordMatch) {
+                            groupedCriteria[groupName].push(criterion);
+                            assigned = true;
+                            break;
+                        }
+                    }
+                    if (!assigned) {
+                        groupedCriteria['Ungrouped'].push(criterion);
+                    }
+                });
+                
+                // Sort criteria within each group
+                groupOrder.forEach(groupName => {
+                    if (groupedCriteria[groupName] && criteriaGroupMapping[groupName]) {
+                        const order = criteriaGroupMapping[groupName].criteriaNames;
+                        groupedCriteria[groupName].sort((a, b) => {
+                            const aIndex = order.findIndex(name => 
+                                a.name.toLowerCase().includes(name.toLowerCase()) || 
+                                name.toLowerCase().includes(a.name.toLowerCase())
+                            );
+                            const bIndex = order.findIndex(name => 
+                                b.name.toLowerCase().includes(name.toLowerCase()) || 
+                                name.toLowerCase().includes(b.name.toLowerCase())
+                            );
+                            
+                            if (aIndex !== -1 && bIndex !== -1) {
+                                return aIndex - bIndex;
+                            }
+                            if (aIndex !== -1) return -1;
+                            if (bIndex !== -1) return 1;
+                            return a.name.localeCompare(b.name);
+                        });
+                    }
+                });
+                
+                // Flatten into ordered array
+                const orderedCriteria = [];
+                groupOrder.forEach(groupName => {
+                    orderedCriteria.push(...groupedCriteria[groupName]);
+                });
+                orderedCriteria.push(...groupedCriteria['Ungrouped']);
+                
+                return { orderedCriteria, groupedCriteria };
+            };
+            
+            const { orderedCriteria, groupedCriteria } = organizeCriteria(criteria);
+            
+            // Hardcoded penultimate criteria (to be displayed in red)
+            const penultimateCriteriaNames = new Set([
+                'Reading Sentences',
+                'Overtime (contd. after 2nd bell)'
+            ]);
+
             const studentCards = await Promise.all(students.map(async student => {
                 const group = groups.find(g => g.id === student.group_id);
-                const groupName = group ? group.name : 'Unassigned';
                 const groupJudges = await GroupManager.getJudgesForStudent(student.id);
                 const allSubmitted = await GroupManager.allJudgesSubmittedForStudent(student.id);
 
-                // Calculate scores
+                // Calculate scores using ordered criteria
                 let totalScore = 0;
                 const judgeScores = await Promise.all(groupJudges.map(async judge => {
                     let judgeTotal = 0;
-                    const scores = await Promise.all(criteria.map(async criterion => {
+                    const scores = await Promise.all(orderedCriteria.map(async criterion => {
                         const score = await DataManager.getScore(student.id, judge.id, criterion.id);
                         if (score !== null) {
                             judgeTotal += score;
                         }
                         return {
                             criterion: criterion.name,
+                            criterionId: criterion.id,
                             score: score
                         };
                     }));
@@ -253,7 +354,6 @@ const SuperJudgeView = {
                     <div class="student-score-card">
                         <div class="student-score-header">
                             <h3>${student.name}</h3>
-                            <span class="badge">Grade: ${groupName}</span>
                             <span class="badge ${allSubmitted ? 'badge-success' : 'badge-warning'}">
                                 ${allSubmitted ? 'All Judges Submitted' : 'Pending'}
                             </span>
@@ -279,11 +379,20 @@ const SuperJudgeView = {
                                             <button class="btn btn-sm btn-primary" onclick="SuperJudgeView.editJudgeScores('${student.id}', '${js.judge.id}')">Edit</button>
                                         </div>
                                         <div class="criterion-scores">
-                                            ${js.scores.map(s => `
-                                                <span class="criterion-badge">
+                                            ${js.scores.map(s => {
+                                                // Check if criterion is penultimate (flexible matching)
+                                                const criterionLower = s.criterion.toLowerCase();
+                                                const isPenultimate = Array.from(penultimateCriteriaNames).some(name => 
+                                                    criterionLower.includes(name.toLowerCase()) || 
+                                                    name.toLowerCase().includes(criterionLower)
+                                                );
+                                                const redStyle = isPenultimate ? 'style="color: red;"' : '';
+                                                return `
+                                                <span class="criterion-badge" ${redStyle}>
                                                     ${s.criterion}: ${s.score !== null ? s.score : 'N/A'}
                                                 </span>
-                                            `).join('')}
+                                            `;
+                                            }).join('')}
                                         </div>
                                     </div>
                                 `).join('')}
@@ -318,20 +427,168 @@ const SuperJudgeView = {
             // Unlock scores first
             await DataManager.unlockScores(studentId, judgeId);
 
+            // Organize criteria in the same order as Judge view
+            const criteriaGroupMapping = {
+                'Content': {
+                    criteriaNames: ['Ideas Examples', 'Ideas Example', 'Values based examples', 'Relate to topic and reflect'],
+                    keywords: ['ideas', 'values', 'relate to topic']
+                },
+                'Language': {
+                    criteriaNames: ['Creativity Language'],
+                    keywords: ['creativity language', 'language']
+                },
+                'Presentation': {
+                    criteriaNames: ['Confidence Style Effectiveness'],
+                    keywords: ['confidence', 'style', 'effectiveness', 'presentation']
+                },
+                'Preparation': {
+                    criteriaNames: ['Reading Sentences', 'Overtime (contd. after 2nd bell)'],
+                    keywords: ['reading', 'sentences', 'overtime', 'preparation']
+                }
+            };
+            
+            const groupOrder = ['Content', 'Language', 'Presentation', 'Preparation'];
+            
+            // Organize criteria into groups
+            const groupedCriteria = {};
+            groupOrder.forEach(groupName => {
+                groupedCriteria[groupName] = [];
+            });
+            groupedCriteria['Ungrouped'] = [];
+            
+            criteria.forEach(criterion => {
+                let assigned = false;
+                const criterionNameLower = criterion.name.toLowerCase();
+                
+                for (const groupName in criteriaGroupMapping) {
+                    const groupMapping = criteriaGroupMapping[groupName];
+                    
+                    const exactMatch = groupMapping.criteriaNames.some(name => 
+                        criterionNameLower === name.toLowerCase() ||
+                        criterionNameLower.includes(name.toLowerCase()) || 
+                        name.toLowerCase().includes(criterionNameLower)
+                    );
+                    
+                    const keywordMatch = groupMapping.keywords && groupMapping.keywords.some(keyword => 
+                        criterionNameLower.includes(keyword.toLowerCase())
+                    );
+                    
+                    if (exactMatch || keywordMatch) {
+                        groupedCriteria[groupName].push(criterion);
+                        assigned = true;
+                        break;
+                    }
+                }
+                if (!assigned) {
+                    groupedCriteria['Ungrouped'].push(criterion);
+                }
+            });
+            
+            // Sort criteria within each group
+            groupOrder.forEach(groupName => {
+                if (groupedCriteria[groupName] && criteriaGroupMapping[groupName]) {
+                    const order = criteriaGroupMapping[groupName].criteriaNames;
+                    groupedCriteria[groupName].sort((a, b) => {
+                        const aIndex = order.findIndex(name => 
+                            a.name.toLowerCase().includes(name.toLowerCase()) || 
+                            name.toLowerCase().includes(a.name.toLowerCase())
+                        );
+                        const bIndex = order.findIndex(name => 
+                            b.name.toLowerCase().includes(name.toLowerCase()) || 
+                            name.toLowerCase().includes(b.name.toLowerCase())
+                        );
+                        
+                        if (aIndex !== -1 && bIndex !== -1) {
+                            return aIndex - bIndex;
+                        }
+                        if (aIndex !== -1) return -1;
+                        if (bIndex !== -1) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                }
+            });
+            
+            // Flatten into ordered array
+            const orderedCriteria = [];
+            groupOrder.forEach(groupName => {
+                orderedCriteria.push(...groupedCriteria[groupName]);
+            });
+            orderedCriteria.push(...groupedCriteria['Ungrouped']);
+            
+            // Hardcoded penultimate criteria (to be displayed in red)
+            const penultimateCriteriaNames = new Set([
+                'Reading Sentences',
+                'Overtime (contd. after 2nd bell)'
+            ]);
+            
+            // Define score ranges (same as Judge view)
+            const getScoreRange = (criterionName) => {
+                const nameLower = criterionName.toLowerCase();
+                
+                if (nameLower.includes('ideas example')) {
+                    return { min: 1, max: 5 };
+                }
+                if (nameLower.includes('values based examples')) {
+                    return { min: 1, max: 10 };
+                }
+                if (nameLower.includes('relate to topic')) {
+                    return { min: 1, max: 5 };
+                }
+                if (nameLower.includes('creativity language')) {
+                    return { min: 1, max: 10 };
+                }
+                if (nameLower.includes('confidence') || nameLower.includes('style') || nameLower.includes('effectiveness')) {
+                    return { min: 1, max: 10 };
+                }
+                if (nameLower.includes('reading sentences')) {
+                    return { min: 1, max: 5 };
+                }
+                if (nameLower.includes('overtime')) {
+                    return { min: 1, max: 5 };
+                }
+                
+                return null;
+            };
+
             // Create modal for editing
             const modal = document.createElement('div');
             modal.className = 'modal';
             
-            // Load scores for criteria
-            const scoreInputs = await Promise.all(criteria.map(async criterion => {
+            // Load scores for criteria in order
+            const scoreInputs = await Promise.all(orderedCriteria.map(async criterion => {
                 const score = await DataManager.getScore(studentId, judgeId, criterion.id);
+                
+                // Get score range: prefer database values, fallback to name-based mapping
+                let minScore, maxScore;
+                if (criterion.min_score != null && criterion.max_score != null) {
+                    minScore = criterion.min_score;
+                    maxScore = criterion.max_score;
+                } else {
+                    const range = getScoreRange(criterion.name);
+                    if (range) {
+                        minScore = range.min;
+                        maxScore = range.max;
+                    } else {
+                        minScore = criterion.min_score ?? 1;
+                        maxScore = criterion.max_score ?? 10;
+                    }
+                }
+                
+                // Check if criterion is penultimate (flexible matching)
+                const criterionLower = criterion.name.toLowerCase();
+                const isPenultimate = Array.from(penultimateCriteriaNames).some(name => 
+                    criterionLower.includes(name.toLowerCase()) || 
+                    name.toLowerCase().includes(criterionLower)
+                );
+                const redStyle = isPenultimate ? 'style="color: red;"' : '';
+                
                 return `
                     <div class="criterion-score-item">
-                        <label>${criterion.name} (1-10):</label>
+                        <label ${redStyle}>${criterion.name} (${minScore}-${maxScore}):</label>
                         <input 
                             type="number" 
-                            min="1" 
-                            max="10" 
+                            min="${minScore}" 
+                            max="${maxScore}" 
                             value="${score || ''}" 
                             data-criterion-id="${criterion.id}"
                             class="score-input"
@@ -364,12 +621,23 @@ const SuperJudgeView = {
     },
 
     updateEditScore(criterionId, value) {
+        if (value === '' || value === null || value === undefined) {
+            return;
+        }
+        
+        const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
+        if (!inputElement) {
+            return;
+        }
+        
+        const minScore = parseInt(inputElement.min) || 1;
+        const maxScore = parseInt(inputElement.max) || 10;
         const score = parseInt(value);
-        if (isNaN(score) || score < 1 || score > 10) {
-            if (value !== '') {
-                alert('Score must be between 1 and 10');
-                return;
-            }
+        
+        if (isNaN(score) || score < minScore || score > maxScore) {
+            alert(`Score must be between ${minScore} and ${maxScore}`);
+            inputElement.value = '';
+            return;
         }
     },
 
@@ -386,7 +654,9 @@ const SuperJudgeView = {
                 const value = input.value;
                 if (value && value !== '') {
                     const score = parseInt(value);
-                    if (score >= 1 && score <= 10) {
+                    const minScore = parseInt(input.min) || 1;
+                    const maxScore = parseInt(input.max) || 10;
+                    if (!isNaN(score) && score >= minScore && score <= maxScore) {
                         await DataManager.setScore(this.currentEditingStudent, this.currentEditingJudge, criterionId, score);
                     }
                 }

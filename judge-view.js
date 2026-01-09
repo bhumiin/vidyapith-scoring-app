@@ -290,29 +290,301 @@ const JudgeView = {
                 notesTextarea.disabled = false; // Notes can always be edited
             }
 
-            // Render criteria inputs
-            const container = document.getElementById('criteria-scores');
-            container.innerHTML = criteria.map(criterion => {
-                const score = this.currentScores[criterion.id] || '';
-                const disabled = submitted ? 'disabled' : '';
+            // Get all criteria
+            const allCriteria = await DataManager.getCriteria();
+            
+            // Define criteria groups programmatically (mapping criteria names to group headers)
+            // Using flexible matching to handle name variations
+            const criteriaGroupMapping = {
+                'Content': {
+                    criteriaNames: ['Ideas Examples', 'Ideas Example', 'Values based examples', 'Relate to topic and reflect'],
+                    isPenalty: false,
+                    // Keywords for flexible matching
+                    keywords: ['ideas', 'values', 'relate to topic']
+                },
+                'Language': {
+                    criteriaNames: ['Creativity Language'],
+                    isPenalty: false,
+                    keywords: ['creativity language', 'language']
+                },
+                'Presentation': {
+                    criteriaNames: ['Confidence Style Effectiveness'],
+                    isPenalty: false,
+                    keywords: ['confidence', 'style', 'effectiveness', 'presentation']
+                },
+                'Preparation': {
+                    criteriaNames: ['Reading Sentences', 'Overtime (contd. after 2nd bell)'],
+                    isPenalty: true,
+                    keywords: ['reading', 'sentences', 'overtime', 'preparation']
+                }
+            };
+            
+            // Define order for groups
+            const groupOrder = ['Content', 'Language', 'Presentation', 'Preparation'];
+            
+            // Organize criteria into groups
+            const groupedCriteria = {};
+            groupOrder.forEach(groupName => {
+                groupedCriteria[groupName] = {
+                    header: groupName,
+                    criteria: [],
+                    isPenalty: criteriaGroupMapping[groupName].isPenalty
+                };
+            });
+            
+            // Add ungrouped criteria container
+            groupedCriteria['Ungrouped'] = {
+                header: 'Ungrouped',
+                criteria: [],
+                isPenalty: false
+            };
+            
+            // Assign criteria to groups based on name matching (flexible matching)
+            allCriteria.forEach(criterion => {
+                let assigned = false;
+                const criterionNameLower = criterion.name.toLowerCase();
+                
+                for (const groupName in criteriaGroupMapping) {
+                    const groupMapping = criteriaGroupMapping[groupName];
+                    
+                    // Check exact name matches first
+                    const exactMatch = groupMapping.criteriaNames.some(name => 
+                        criterionNameLower === name.toLowerCase() ||
+                        criterionNameLower.includes(name.toLowerCase()) || 
+                        name.toLowerCase().includes(criterionNameLower)
+                    );
+                    
+                    // Check keyword matches if exact match fails
+                    const keywordMatch = groupMapping.keywords && groupMapping.keywords.some(keyword => 
+                        criterionNameLower.includes(keyword.toLowerCase())
+                    );
+                    
+                    if (exactMatch || keywordMatch) {
+                        groupedCriteria[groupName].criteria.push(criterion);
+                        assigned = true;
+                        break;
+                    }
+                }
+                if (!assigned) {
+                    groupedCriteria['Ungrouped'].criteria.push(criterion);
+                }
+            });
+            
+            // Sort criteria within each group according to predefined order
+            groupOrder.forEach(groupName => {
+                if (groupedCriteria[groupName] && criteriaGroupMapping[groupName]) {
+                    const order = criteriaGroupMapping[groupName].criteriaNames;
+                    groupedCriteria[groupName].criteria.sort((a, b) => {
+                        const aIndex = order.findIndex(name => 
+                            a.name.toLowerCase().includes(name.toLowerCase()) || 
+                            name.toLowerCase().includes(a.name.toLowerCase())
+                        );
+                        const bIndex = order.findIndex(name => 
+                            b.name.toLowerCase().includes(name.toLowerCase()) || 
+                            name.toLowerCase().includes(b.name.toLowerCase())
+                        );
+                        
+                        if (aIndex !== -1 && bIndex !== -1) {
+                            return aIndex - bIndex;
+                        }
+                        if (aIndex !== -1) return -1;
+                        if (bIndex !== -1) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                }
+            });
+            
+            // Define score ranges for each criterion by name
+            const getScoreRange = (criterionName) => {
+                const nameLower = criterionName.toLowerCase();
+                
+                // Content group: 1-5 for Ideas Examples and Relate to topic, 1-10 for Values based examples
+                if (nameLower.includes('ideas example')) {
+                    return { min: 1, max: 5 };
+                }
+                if (nameLower.includes('values based examples')) {
+                    return { min: 1, max: 10 };
+                }
+                if (nameLower.includes('relate to topic')) {
+                    return { min: 1, max: 5 };
+                }
+                
+                // Language group: 1-10
+                if (nameLower.includes('creativity language')) {
+                    return { min: 1, max: 10 };
+                }
+                
+                // Presentation group: 1-10
+                if (nameLower.includes('confidence') || nameLower.includes('style') || nameLower.includes('effectiveness')) {
+                    return { min: 1, max: 10 };
+                }
+                
+                // Preparation group: 1-5 (penalty)
+                if (nameLower.includes('reading sentences')) {
+                    return { min: 1, max: 5 };
+                }
+                if (nameLower.includes('overtime')) {
+                    return { min: 1, max: 5 };
+                }
+                
+                // Default: use database values if available, otherwise return null to indicate missing
+                return null;
+            };
+            
+            // Helper function to render a single group
+            const renderGroup = (groupData) => {
+                if (!groupData || groupData.criteria.length === 0) {
+                    return '';
+                }
+                
+                const groupCriteria = groupData.criteria;
+                const isPenalty = groupData.isPenalty;
+                const penaltyClass = isPenalty ? 'penalty' : '';
+                const criteriaHeader = groupData.header;
+                
+                const criteriaHTML = groupCriteria.map(criterion => {
+                    const score = this.currentScores[criterion.id] || '';
+                    const disabled = submitted ? 'disabled' : '';
+                    
+                    // Get score range: prefer database values, fallback to name-based mapping
+                    let minScore, maxScore;
+                    if (criterion.min_score != null && criterion.max_score != null) {
+                        // Use database values if they exist
+                        minScore = criterion.min_score;
+                        maxScore = criterion.max_score;
+                    } else {
+                        // Use name-based mapping
+                        const range = getScoreRange(criterion.name);
+                        if (range) {
+                            minScore = range.min;
+                            maxScore = range.max;
+                        } else {
+                            // If no mapping found, use database defaults or throw error
+                            console.warn(`No score range found for criterion: ${criterion.name}`);
+                            minScore = criterion.min_score ?? 1;
+                            maxScore = criterion.max_score ?? 10;
+                        }
+                    }
+                    
+                    return `
+                        <div class="criterion-item">
+                            <label>${criterion.name} (${minScore}-${maxScore}):</label>
+                            <input 
+                                type="number" 
+                                min="${minScore}" 
+                                max="${maxScore}" 
+                                step="1"
+                                value="${score}" 
+                                data-criterion-id="${criterion.id}"
+                                data-min-score="${minScore}"
+                                data-max-score="${maxScore}"
+                                data-is-penalty="${isPenalty}"
+                                ${disabled}
+                                class="score-input"
+                                onchange="JudgeView.updateScore('${criterion.id}', this.value)"
+                                oninput="JudgeView.updateScore('${criterion.id}', this.value)"
+                            >
+                        </div>
+                    `;
+                }).join('');
+                
+                // Add penalty indicator text for Preparation group
+                const penaltyIndicator = isPenalty ? 
+                    '<p class="penalty-indicator">Note: Scores in this group are deducted from the total</p>' : '';
+                
                 return `
-                <div class="criterion-score-item">
-                    <label>${criterion.name} (1-10):</label>
-                    <input 
-                        type="number" 
-                        min="1" 
-                        max="10" 
-                        step="1"
-                        value="${score}" 
-                        data-criterion-id="${criterion.id}"
-                        ${disabled}
-                        class="score-input"
-                        onchange="JudgeView.updateScore('${criterion.id}', this.value)"
-                        oninput="JudgeView.updateScore('${criterion.id}', this.value)"
-                    >
+                    <div class="criterion-group ${penaltyClass}">
+                        <h3 class="criterion-group-title">${criteriaHeader}</h3>
+                        ${penaltyIndicator}
+                        <div class="criterion-group-items criterion-group-items-horizontal">
+                            ${criteriaHTML}
+                        </div>
+                    </div>
+                `;
+            };
+            
+            // Render criteria inputs grouped by criteria headers
+            const container = document.getElementById('criteria-scores');
+            let htmlOutput = '';
+            
+            // Render Content group (full width)
+            if (groupedCriteria['Content'] && groupedCriteria['Content'].criteria.length > 0) {
+                htmlOutput += renderGroup(groupedCriteria['Content']);
+            }
+            
+            // Render Language and Presentation groups side by side
+            const languageGroup = groupedCriteria['Language'];
+            const presentationGroup = groupedCriteria['Presentation'];
+            const hasLanguage = languageGroup && languageGroup.criteria.length > 0;
+            const hasPresentation = presentationGroup && presentationGroup.criteria.length > 0;
+            
+            if (hasLanguage || hasPresentation) {
+                htmlOutput += '<div class="criterion-groups-row">';
+                if (hasLanguage) {
+                    htmlOutput += renderGroup(languageGroup);
+                }
+                if (hasPresentation) {
+                    htmlOutput += renderGroup(presentationGroup);
+                }
+                htmlOutput += '</div>';
+            }
+            
+            // Render Preparation group (full width)
+            if (groupedCriteria['Preparation'] && groupedCriteria['Preparation'].criteria.length > 0) {
+                htmlOutput += renderGroup(groupedCriteria['Preparation']);
+            }
+            
+            container.innerHTML = htmlOutput + 
+            // Add ungrouped criteria if any
+            (groupedCriteria['Ungrouped'].criteria.length > 0 ? `
+                <div class="criterion-group">
+                    <h3 class="criterion-group-title">${groupedCriteria['Ungrouped'].header}</h3>
+                    <div class="criterion-group-items criterion-group-items-horizontal">
+                        ${groupedCriteria['Ungrouped'].criteria.map(criterion => {
+                            const score = this.currentScores[criterion.id] || '';
+                            const disabled = submitted ? 'disabled' : '';
+                            
+                            // Get score range: prefer database values, fallback to name-based mapping
+                            let minScore, maxScore;
+                            if (criterion.min_score != null && criterion.max_score != null) {
+                                minScore = criterion.min_score;
+                                maxScore = criterion.max_score;
+                            } else {
+                                const range = getScoreRange(criterion.name);
+                                if (range) {
+                                    minScore = range.min;
+                                    maxScore = range.max;
+                                } else {
+                                    console.warn(`No score range found for criterion: ${criterion.name}`);
+                                    minScore = criterion.min_score ?? 1;
+                                    maxScore = criterion.max_score ?? 10;
+                                }
+                            }
+                            
+                            return `
+                                <div class="criterion-item">
+                                    <label>${criterion.name} (${minScore}-${maxScore}):</label>
+                                    <input 
+                                        type="number" 
+                                        min="${minScore}" 
+                                        max="${maxScore}" 
+                                        step="1"
+                                        value="${score}" 
+                                        data-criterion-id="${criterion.id}"
+                                        data-min-score="${minScore}"
+                                        data-max-score="${maxScore}"
+                                        data-is-penalty="false"
+                                        ${disabled}
+                                        class="score-input"
+                                        onchange="JudgeView.updateScore('${criterion.id}', this.value)"
+                                        oninput="JudgeView.updateScore('${criterion.id}', this.value)"
+                                    >
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
                 </div>
-            `;
-            }).join('');
+            ` : '');
 
             // Update submit button state
             const submitBtn = document.getElementById('submit-scores');
@@ -339,6 +611,18 @@ const JudgeView = {
 
         const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
         
+        // Get criterion-specific min/max from input element data attributes
+        // These should always be set correctly from the render function
+        const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
+        const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
+        
+        // If min/max not found, this is an error - should not happen
+        if (minScore === null || maxScore === null || isNaN(minScore) || isNaN(maxScore)) {
+            console.error(`Score range not found for criterion ${criterionId}`);
+            alert('Error: Score range not configured for this criterion. Please refresh the page.');
+            return;
+        }
+        
         // If value is empty, clear the score
         if (value === '' || value === null || value === undefined) {
             this.currentScores[criterionId] = null;
@@ -353,8 +637,8 @@ const JudgeView = {
 
         const score = parseInt(value);
         
-        // Validate score range
-        if (isNaN(score) || score < 1 || score > 10) {
+        // Validate score range based on criterion-specific min/max
+        if (isNaN(score) || score < minScore || score > maxScore) {
             // Clear invalid score from storage
             this.currentScores[criterionId] = null;
             
@@ -363,7 +647,7 @@ const JudgeView = {
                 inputElement.value = '';
                 inputElement.classList.add('invalid-score');
                 inputElement.focus();
-                alert('Score must be between 1 and 10. Please enter a valid score.');
+                alert(`Score must be between ${minScore} and ${maxScore}. Please enter a valid score.`);
             }
             this.calculateTotal();
             this.updateButtonStates();
@@ -380,7 +664,7 @@ const JudgeView = {
     },
 
     /**
-     * Validate all scores are within valid range (1-10)
+     * Validate all scores are within valid range based on criterion-specific min/max
      * @returns {Object} Validation result with isValid flag and invalidCriteria array
      */
     validateAllScores() {
@@ -389,8 +673,18 @@ const JudgeView = {
         for (const criterionId in this.currentScores) {
             const score = this.currentScores[criterionId];
             if (score !== null && score !== undefined && score !== '') {
+                const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
+                const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
+                const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
+                
+                // Skip validation if score range not found (should not happen)
+                if (minScore === null || maxScore === null || isNaN(minScore) || isNaN(maxScore)) {
+                    console.warn(`Score range not found for criterion ${criterionId} during validation`);
+                    continue;
+                }
+                
                 const numScore = parseInt(score);
-                if (isNaN(numScore) || numScore < 1 || numScore > 10) {
+                if (isNaN(numScore) || numScore < minScore || numScore > maxScore) {
                     invalidCriteria.push(criterionId);
                 }
             }
@@ -433,9 +727,25 @@ const JudgeView = {
     },
 
     calculateTotal() {
-        const total = Object.values(this.currentScores).reduce((sum, score) => {
-            return sum + (score || 0);
-        }, 0);
+        let total = 0;
+        
+        // Calculate total: add regular scores, subtract penalty scores
+        for (const criterionId in this.currentScores) {
+            const score = this.currentScores[criterionId];
+            if (score !== null && score !== undefined && score !== '') {
+                const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
+                const isPenalty = inputElement ? inputElement.dataset.isPenalty === 'true' : false;
+                
+                if (isPenalty) {
+                    // Subtract penalty scores
+                    total -= (score || 0);
+                } else {
+                    // Add regular scores
+                    total += (score || 0);
+                }
+            }
+        }
+        
         document.getElementById('judge-total-score').textContent = total;
     },
 
@@ -450,10 +760,10 @@ const JudgeView = {
         if (!validation.isValid) {
             const invalidInputs = validation.invalidCriteria.map(id => {
                 const input = document.querySelector(`input[data-criterion-id="${id}"]`);
-                return input ? input.closest('.criterion-score-item')?.querySelector('label')?.textContent : 'Unknown';
+                return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
             }).filter(Boolean);
             
-            alert(`Please enter valid scores (1-10) for all criteria before saving.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            alert(`Please enter valid scores for all criteria before saving.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
             
             // Focus on first invalid input
             if (validation.invalidCriteria.length > 0) {
@@ -470,13 +780,22 @@ const JudgeView = {
             const criteria = await DataManager.getCriteria();
 
             // Save scores (only valid ones)
+            // Use input element data attributes for score ranges (same as validation)
             for (const criterion of criteria) {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
                     const numScore = parseInt(score);
-                    // Double-check validation before saving
-                    if (!isNaN(numScore) && numScore >= 1 && numScore <= 10) {
-                        await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
+                    const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
+                    const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
+                    
+                    // Only save if score range is valid and score is within range
+                    if (minScore !== null && maxScore !== null && !isNaN(minScore) && !isNaN(maxScore)) {
+                        if (!isNaN(numScore) && numScore >= minScore && numScore <= maxScore) {
+                            await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                        }
+                    } else {
+                        console.warn(`Cannot save score for criterion ${criterion.id}: score range not found`);
                     }
                 }
             }
@@ -507,10 +826,10 @@ const JudgeView = {
         if (!validation.isValid) {
             const invalidInputs = validation.invalidCriteria.map(id => {
                 const input = document.querySelector(`input[data-criterion-id="${id}"]`);
-                return input ? input.closest('.criterion-score-item')?.querySelector('label')?.textContent : 'Unknown';
+                return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
             }).filter(Boolean);
             
-            alert(`Please enter valid scores (1-10) for all criteria before submitting.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            alert(`Please enter valid scores for all criteria before submitting.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
             
             // Focus on first invalid input
             if (validation.invalidCriteria.length > 0) {
@@ -539,13 +858,22 @@ const JudgeView = {
             }
 
             // Save all scores (only valid ones)
+            // Use input element data attributes for score ranges (same as validation)
             for (const criterion of criteria) {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
                     const numScore = parseInt(score);
-                    // Double-check validation before saving
-                    if (!isNaN(numScore) && numScore >= 1 && numScore <= 10) {
-                        await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
+                    const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
+                    const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
+                    
+                    // Only save if score range is valid and score is within range
+                    if (minScore !== null && maxScore !== null && !isNaN(minScore) && !isNaN(maxScore)) {
+                        if (!isNaN(numScore) && numScore >= minScore && numScore <= maxScore) {
+                            await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
+                        }
+                    } else {
+                        console.warn(`Cannot save score for criterion ${criterion.id}: score range not found`);
                     }
                 }
             }
@@ -567,6 +895,23 @@ const JudgeView = {
             console.error('Error submitting scores:', error);
             alert('Error submitting scores. Please try again.');
         }
+    },
+
+    /**
+     * Check if a criterion is a penalty criterion (belongs to Preparation group)
+     * @param {Object} criterion - The criterion object
+     * @returns {boolean} - True if penalty, false otherwise
+     */
+    isPenaltyCriterion(criterion) {
+        // Check if criterion has group info with is_penalty flag
+        if (criterion.group?.is_penalty === true) {
+            return true;
+        }
+        
+        // Check by criterion name (Preparation group criteria)
+        const criterionNameLower = criterion.name.toLowerCase();
+        const penaltyCriteriaNames = ['reading sentences', 'overtime', 'preparation'];
+        return penaltyCriteriaNames.some(name => criterionNameLower.includes(name));
     },
 
     async renderScoredStudents() {
@@ -627,7 +972,16 @@ const JudgeView = {
                 for (const criterion of criteria) {
                     const score = await DataManager.getScore(student.id, user.id, criterion.id);
                     if (score !== null) {
-                        total += score;
+                        // Check if this is a penalty criterion (Preparation group)
+                        const isPenalty = this.isPenaltyCriterion(criterion);
+                        
+                        if (isPenalty) {
+                            // Subtract penalty scores
+                            total -= score;
+                        } else {
+                            // Add regular scores
+                            total += score;
+                        }
                     }
                 }
 
