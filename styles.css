@@ -999,6 +999,17 @@ body {
     box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
 }
 
+.score-input.missing-score {
+    border-color: #dc3545;
+    background: #fff5f5;
+    animation: shake 0.3s;
+}
+
+.score-input.missing-score:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
+}
+
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
@@ -1176,6 +1187,16 @@ body {
 .student-score-header h3 {
     color: #333;
     font-size: 20px;
+}
+
+.place-label-centered {
+    text-align: center;
+    font-weight: 700;
+    color: #667eea;
+    font-size: 20px;
+    width: 100%;
+    margin-bottom: 5px;
+    flex-basis: 100%;
 }
 
 .score-summary {

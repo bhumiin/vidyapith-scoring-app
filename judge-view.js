@@ -667,6 +667,7 @@ const JudgeView = {
             if (inputElement) {
                 inputElement.value = '';
                 inputElement.classList.remove('invalid-score');
+                inputElement.classList.remove('missing-score');
             }
             this.calculateTotal();
             this.updateButtonStates();
@@ -692,10 +693,11 @@ const JudgeView = {
             return;
         }
 
-        // Valid score - store it and remove invalid class
+        // Valid score - store it and remove invalid/missing classes
         this.currentScores[criterionId] = score;
         if (inputElement) {
             inputElement.classList.remove('invalid-score');
+            inputElement.classList.remove('missing-score');
         }
         this.calculateTotal();
         this.updateButtonStates();
@@ -817,6 +819,28 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             const criteria = await DataManager.getCriteria();
 
+            // Validate all criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
+            const missingScores = criteria.filter(c => {
+                const score = this.currentScores[c.id];
+                const criterionNameLower = c.name.toLowerCase();
+                const isOptional = criterionNameLower.includes('reading sentences') || 
+                                   criterionNameLower.includes('overtime');
+                
+                // Skip optional criteria from missing scores check
+                if (isOptional) {
+                    return false;
+                }
+                
+                return !score || score === '';
+            });
+
+            if (missingScores.length > 0) {
+                const missingCriteriaNames = missingScores.map(c => c.name).join(', ');
+                if (!confirm(`Some criteria are not scored: ${missingCriteriaNames}\n\nSave draft anyway?`)) {
+                    return;
+                }
+            }
+
             // Save scores (only valid ones)
             // Use input element data attributes for score ranges (same as validation)
             for (const criterion of criteria) {
@@ -883,16 +907,50 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             const criteria = await DataManager.getCriteria();
 
-            // Validate all criteria are scored
+            // Validate all criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
             const missingScores = criteria.filter(c => {
                 const score = this.currentScores[c.id];
+                const criterionNameLower = c.name.toLowerCase();
+                const isOptional = criterionNameLower.includes('reading sentences') || 
+                                   criterionNameLower.includes('overtime');
+                
+                // Skip optional criteria from missing scores check
+                if (isOptional) {
+                    return false;
+                }
+                
                 return !score || score === '';
             });
 
             if (missingScores.length > 0) {
-                if (!confirm(`Some criteria are not scored. Submit anyway?`)) {
-                    return;
+                // Clear any previous missing-score highlights
+                document.querySelectorAll('.score-input.missing-score').forEach(input => {
+                    input.classList.remove('missing-score');
+                });
+
+                // Highlight missing score fields in RED
+                const missingCriteriaNames = [];
+                missingScores.forEach(criterion => {
+                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
+                    if (inputElement) {
+                        inputElement.classList.add('missing-score');
+                        missingCriteriaNames.push(criterion.name);
+                    }
+                });
+
+                // Show alert with missing fields
+                alert(`Please enter scores for all required criteria before submitting.\n\nMissing scores:\n${missingCriteriaNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`);
+
+                // Focus and scroll to first missing field
+                if (missingScores.length > 0) {
+                    const firstMissingInput = document.querySelector(`input[data-criterion-id="${missingScores[0].id}"]`);
+                    if (firstMissingInput) {
+                        firstMissingInput.focus();
+                        firstMissingInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                 }
+
+                return; // Prevent submission - DO NOT PROCEED
             }
 
             // Save all scores (only valid ones)
