@@ -318,7 +318,8 @@ const SuperJudgeView = {
                 'Overtime (contd. after 2nd bell)'
             ]);
 
-            const studentCards = await Promise.all(students.map(async student => {
+            // First, collect all student data with scores
+            const studentsWithScores = await Promise.all(students.map(async student => {
                 const group = groups.find(g => g.id === student.group_id);
                 const groupJudges = await GroupManager.getJudgesForStudent(student.id);
                 const allSubmitted = await GroupManager.allJudgesSubmittedForStudent(student.id);
@@ -348,11 +349,55 @@ const SuperJudgeView = {
                     };
                 }));
 
-                const avgScore = groupJudges.length > 0 ? (totalScore / groupJudges.length).toFixed(2) : 0;
+                const avgScore = groupJudges.length > 0 ? parseFloat((totalScore / groupJudges.length).toFixed(2)) : 0;
+
+                return {
+                    student: student,
+                    group: group,
+                    groupJudges: groupJudges,
+                    allSubmitted: allSubmitted,
+                    totalScore: totalScore,
+                    avgScore: avgScore,
+                    judgeScores: judgeScores
+                };
+            }));
+
+            // Sort students: first by allSubmitted (true first), then by avgScore (descending), then by name (ascending) for tie-breaking
+            studentsWithScores.sort((a, b) => {
+                // First, prioritize students with all submitted
+                if (a.allSubmitted !== b.allSubmitted) {
+                    return b.allSubmitted ? 1 : -1;
+                }
+                // Then sort by average score (descending)
+                if (a.avgScore !== b.avgScore) {
+                    return b.avgScore - a.avgScore;
+                }
+                // Finally, sort alphabetically by name for tie-breaking
+                return a.student.name.localeCompare(b.student.name);
+            });
+
+            // Add position tracking for top 3 students with allSubmitted === true
+            let position = 0;
+            const studentCards = studentsWithScores.map((studentData, index) => {
+                const { student, group, groupJudges, allSubmitted, totalScore, avgScore, judgeScores } = studentData;
+                
+                // Only assign positions to students with all submitted
+                let placeLabel = '';
+                if (allSubmitted) {
+                    position++;
+                    if (position === 1) {
+                        placeLabel = 'First Place';
+                    } else if (position === 2) {
+                        placeLabel = 'Second Place';
+                    } else if (position === 3) {
+                        placeLabel = 'Third Place';
+                    }
+                }
 
                 return `
                     <div class="student-score-card">
                         <div class="student-score-header">
+                            ${placeLabel ? `<div class="place-label-centered">${placeLabel}</div>` : ''}
                             <h3>${student.name}</h3>
                             <span class="badge ${allSubmitted ? 'badge-success' : 'badge-warning'}">
                                 ${allSubmitted ? 'All Judges Submitted' : 'Pending'}
@@ -364,7 +409,7 @@ const SuperJudgeView = {
                                     <strong>Total Score:</strong> ${totalScore}
                                 </div>
                                 <div class="summary-item">
-                                    <strong>Average Score:</strong> ${avgScore}
+                                    <strong>Average Score:</strong> ${avgScore.toFixed(2)}
                                 </div>
                                 <div class="summary-item">
                                     <strong>Number of Judges:</strong> ${groupJudges.length}
@@ -405,7 +450,7 @@ const SuperJudgeView = {
                         `}
                     </div>
                 `;
-            }));
+            });
 
             container.innerHTML = studentCards.join('');
         } catch (error) {
