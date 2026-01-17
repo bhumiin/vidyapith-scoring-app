@@ -53,19 +53,25 @@ const JudgeView = {
             });
         }
 
-        // Submit scores
-        document.getElementById('submit-scores').addEventListener('click', () => {
-            this.submitScores().catch(error => {
-                console.error('Error submitting scores:', error);
+        // Add score
+        const saveBtn = document.getElementById('save-scores');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                this.addScore().catch(error => {
+                    console.error('Error adding score:', error);
+                });
             });
-        });
+        }
 
-        // Save draft
-        document.getElementById('save-scores').addEventListener('click', () => {
-            this.saveDraft().catch(error => {
-                console.error('Error saving draft:', error);
+        // Submit all scores
+        const submitAllBtn = document.getElementById('submit-all-scores');
+        if (submitAllBtn) {
+            submitAllBtn.addEventListener('click', () => {
+                this.submitAllScores().catch(error => {
+                    console.error('Error submitting all scores:', error);
+                });
             });
-        });
+        }
 
         // Notes modal handlers
         document.getElementById('notes-modal-close').addEventListener('click', () => {
@@ -166,9 +172,14 @@ const JudgeView = {
             const students = await GroupManager.getStudentsForJudge(user.id);
             this.renderStudentSelect(students);
             await this.renderScoredStudents();
+            // updateSubmitAllButtonState is called inside renderScoredStudents
+            // Also call it here to ensure button state is set even if renderScoredStudents has issues
+            await this.updateSubmitAllButtonState();
         } catch (error) {
             console.error('Error rendering judge view:', error);
             alert('Error loading judge view. Please refresh the page.');
+            // Still update button state on error
+            await this.updateSubmitAllButtonState();
         }
     },
 
@@ -265,9 +276,10 @@ const JudgeView = {
         const students = await GroupManager.getStudentsForJudge(user.id);
         await this.renderStudentSelect(students);
         
-        // Refresh scored students list to show only students from selected grade
-        // This must be called after selectedGradeId is set and student dropdown is updated
-        await this.renderScoredStudents();
+            // Refresh scored students list to show only students from selected grade
+            // This must be called after selectedGradeId is set and student dropdown is updated
+            await this.renderScoredStudents();
+            // updateSubmitAllButtonState is called inside renderScoredStudents
     },
 
     async renderTopics(topics, groupId) {
@@ -307,7 +319,6 @@ const JudgeView = {
             const student = students.find(s => s.id === studentId);
             const criteria = await DataManager.getCriteria();
             const user = await AuthManager.getCurrentUser();
-            const submitted = await DataManager.isSubmitted(studentId, user.id);
 
             document.getElementById('current-student-name').textContent = student.name;
             document.getElementById('judge-scoring-section').style.display = 'block';
@@ -482,7 +493,6 @@ const JudgeView = {
                 
                 const criteriaHTML = groupCriteria.map(criterion => {
                     const score = this.currentScores[criterion.id] || '';
-                    const disabled = submitted ? 'disabled' : '';
                     
                     // Get score range: prefer database values, fallback to name-based mapping
                     let minScore, maxScore;
@@ -517,7 +527,6 @@ const JudgeView = {
                                 data-min-score="${minScore}"
                                 data-max-score="${maxScore}"
                                 data-is-penalty="${isPenalty}"
-                                ${disabled}
                                 class="score-input"
                                 onchange="JudgeView.updateScore('${criterion.id}', this.value)"
                                 oninput="JudgeView.updateScore('${criterion.id}', this.value)"
@@ -580,7 +589,6 @@ const JudgeView = {
                     <div class="criterion-group-items criterion-group-items-horizontal">
                         ${groupedCriteria['Ungrouped'].criteria.map(criterion => {
                             const score = this.currentScores[criterion.id] || '';
-                            const disabled = submitted ? 'disabled' : '';
                             
                             // Get score range: prefer database values, fallback to name-based mapping
                             let minScore, maxScore;
@@ -609,11 +617,10 @@ const JudgeView = {
                                         step="1"
                                         value="${score}" 
                                         data-criterion-id="${criterion.id}"
-                                        data-min-score="${minScore}"
-                                        data-max-score="${maxScore}"
-                                        data-is-penalty="false"
-                                        ${disabled}
-                                        class="score-input"
+                                    data-min-score="${minScore}"
+                                    data-max-score="${maxScore}"
+                                    data-is-penalty="false"
+                                    class="score-input"
                                         onchange="JudgeView.updateScore('${criterion.id}', this.value)"
                                         oninput="JudgeView.updateScore('${criterion.id}', this.value)"
                                     >
@@ -624,20 +631,10 @@ const JudgeView = {
                 </div>
             ` : '');
 
-            // Update submit button state
-            const submitBtn = document.getElementById('submit-scores');
-            if (submitted) {
-                submitBtn.textContent = 'Scores Submitted (Locked)';
-                submitBtn.disabled = true;
-                submitBtn.classList.add('btn-disabled');
-            } else {
-                submitBtn.textContent = 'Submit Scores';
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('btn-disabled');
-            }
-
             this.calculateTotal();
-            this.updateButtonStates();
+            this.updateButtonStates().catch(error => {
+                console.error('Error updating button states:', error);
+            });
         } catch (error) {
             console.error('Error selecting student:', error);
             alert('Error loading student. Please try again.');
@@ -670,7 +667,9 @@ const JudgeView = {
                 inputElement.classList.remove('missing-score');
             }
             this.calculateTotal();
-            this.updateButtonStates();
+            this.updateButtonStates().catch(error => {
+                console.error('Error updating button states:', error);
+            });
             return;
         }
 
@@ -689,7 +688,9 @@ const JudgeView = {
                 alert(`Score must be between ${minScore} and ${maxScore}. Please enter a valid score.`);
             }
             this.calculateTotal();
-            this.updateButtonStates();
+            this.updateButtonStates().catch(error => {
+                console.error('Error updating button states:', error);
+            });
             return;
         }
 
@@ -700,7 +701,9 @@ const JudgeView = {
             inputElement.classList.remove('missing-score');
         }
         this.calculateTotal();
-        this.updateButtonStates();
+        this.updateButtonStates().catch(error => {
+            console.error('Error updating button states:', error);
+        });
     },
 
     /**
@@ -737,30 +740,43 @@ const JudgeView = {
     },
 
     /**
-     * Update button states based on score validation
+     * Update button states based on score validation and submission status
      */
-    updateButtonStates() {
+    async updateButtonStates() {
         const validation = this.validateAllScores();
-        const submitBtn = document.getElementById('submit-scores');
         const saveBtn = document.getElementById('save-scores');
         
-        if (!submitBtn || !saveBtn) return;
+        if (!saveBtn) return;
         
-        // Check if student is already submitted
-        const isDisabled = submitBtn.disabled && submitBtn.textContent.includes('Locked');
-        
-        if (validation.isValid || isDisabled) {
-            // Valid scores or already submitted - enable buttons (if not submitted)
-            if (!isDisabled) {
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('btn-disabled');
-                saveBtn.disabled = false;
-                saveBtn.classList.remove('btn-disabled');
+        // Check if all students for the grade are submitted
+        const user = await AuthManager.getCurrentUser();
+        if (user && this.selectedGradeId) {
+            let students = await GroupManager.getStudentsForJudge(user.id);
+            students = students.filter(s => s.group_id === this.selectedGradeId);
+            
+            let allSubmitted = true;
+            for (const student of students) {
+                const submitted = await DataManager.isSubmitted(student.id, user.id);
+                if (!submitted) {
+                    allSubmitted = false;
+                    break;
+                }
             }
+            
+            // If all students are submitted, disable Add score button
+            if (allSubmitted) {
+                saveBtn.disabled = true;
+                saveBtn.classList.add('btn-disabled');
+                return;
+            }
+        }
+        
+        if (validation.isValid) {
+            // Valid scores - enable button
+            saveBtn.disabled = false;
+            saveBtn.classList.remove('btn-disabled');
         } else {
-            // Invalid scores - disable buttons
-            submitBtn.disabled = true;
-            submitBtn.classList.add('btn-disabled');
+            // Invalid scores - disable button
             saveBtn.disabled = true;
             saveBtn.classList.add('btn-disabled');
         }
@@ -789,7 +805,7 @@ const JudgeView = {
         document.getElementById('judge-total-score').textContent = total;
     },
 
-    async saveDraft() {
+    async addScore() {
         if (!this.currentStudentId) {
             alert('Please select a student first');
             return;
@@ -803,7 +819,7 @@ const JudgeView = {
                 return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
             }).filter(Boolean);
             
-            alert(`Please enter valid scores for all criteria before saving.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            alert(`Please enter valid scores for all criteria before adding score.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
             
             // Focus on first invalid input
             if (validation.invalidCriteria.length > 0) {
@@ -819,7 +835,7 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             const criteria = await DataManager.getCriteria();
 
-            // Validate all criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
+            // Validate all required criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
             const missingScores = criteria.filter(c => {
                 const score = this.currentScores[c.id];
                 const criterionNameLower = c.name.toLowerCase();
@@ -835,10 +851,33 @@ const JudgeView = {
             });
 
             if (missingScores.length > 0) {
-                const missingCriteriaNames = missingScores.map(c => c.name).join(', ');
-                if (!confirm(`Some criteria are not scored: ${missingCriteriaNames}\n\nSave draft anyway?`)) {
-                    return;
+                // Clear any previous missing-score highlights
+                document.querySelectorAll('.score-input.missing-score').forEach(input => {
+                    input.classList.remove('missing-score');
+                });
+
+                // Highlight missing score fields
+                const missingCriteriaNames = [];
+                missingScores.forEach(criterion => {
+                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
+                    if (inputElement) {
+                        inputElement.classList.add('missing-score');
+                        missingCriteriaNames.push(criterion.name);
+                    }
+                });
+
+                // Show error with missing fields
+                alert(`Please enter scores for all required criteria before adding score.\n\nMissing scores:\n${missingCriteriaNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`);
+
+                // Focus and scroll to first missing field
+                if (missingScores.length > 0) {
+                    const firstMissingInput = document.querySelector(`input[data-criterion-id="${missingScores[0].id}"]`);
+                    if (firstMissingInput) {
+                        firstMissingInput.focus();
+                        firstMissingInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                 }
+                return;
             }
 
             // Save scores (only valid ones)
@@ -869,11 +908,121 @@ const JudgeView = {
                 await DataManager.setNote(this.currentStudentId, user.id, this.currentNotes);
             }
 
-            alert('Draft saved successfully!');
+            alert('Score added successfully!');
             await this.renderScoredStudents();
+            // updateSubmitAllButtonState is called inside renderScoredStudents
         } catch (error) {
-            console.error('Error saving draft:', error);
-            alert('Error saving draft. Please try again.');
+            console.error('Error adding score:', error);
+            alert('Error adding score. Please try again.');
+        }
+    },
+
+    async submitAllScores() {
+        try {
+            const user = await AuthManager.getCurrentUser();
+            if (!user) return;
+
+            // Check if a grade is selected
+            if (!this.selectedGradeId) {
+                alert('Please select a grade first');
+                return;
+            }
+
+            // Get all students assigned to judge for the selected grade
+            let students = await GroupManager.getStudentsForJudge(user.id);
+            students = students.filter(s => s.group_id === this.selectedGradeId);
+
+            if (students.length === 0) {
+                alert('No students assigned to this grade');
+                return;
+            }
+
+            const criteria = await DataManager.getCriteria();
+            const pendingStudents = [];
+
+            // Check each student for pending scoring
+            for (const student of students) {
+                let hasAnyScore = false;
+                const missingCriteria = [];
+
+                // Check if student has any scores
+                for (const criterion of criteria) {
+                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
+                    if (score !== null) {
+                        hasAnyScore = true;
+                    }
+                }
+
+                // If no scores at all, mark as pending
+                if (!hasAnyScore) {
+                    pendingStudents.push({
+                        student: student,
+                        reason: 'No scores entered'
+                    });
+                    continue;
+                }
+
+                // Check for missing required criteria scores
+                for (const criterion of criteria) {
+                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
+                    const criterionNameLower = criterion.name.toLowerCase();
+                    const isOptional = criterionNameLower.includes('reading sentences') || 
+                                       criterionNameLower.includes('overtime');
+                    
+                    // Skip optional criteria
+                    if (isOptional) {
+                        continue;
+                    }
+                    
+                    // If required criterion has no score, add to missing list
+                    if (score === null || score === undefined || score === '') {
+                        missingCriteria.push(criterion.name);
+                    }
+                }
+
+                // If missing required scores, mark as pending
+                if (missingCriteria.length > 0) {
+                    pendingStudents.push({
+                        student: student,
+                        reason: `Missing: ${missingCriteria.join(', ')}`
+                    });
+                }
+            }
+
+            // If any students are pending, show error
+            if (pendingStudents.length > 0) {
+                const pendingList = pendingStudents.map((item, index) => 
+                    `${index + 1}. ${item.student.name} (${item.reason})`
+                ).join('\n');
+
+                alert(`Cannot submit all scores. The following students are pending scoring:\n\n${pendingList}`);
+                return;
+            }
+
+            // All students are complete - submit all scores
+            let submittedCount = 0;
+            for (const student of students) {
+                try {
+                    await DataManager.submitScores(student.id, user.id);
+                    submittedCount++;
+                } catch (error) {
+                    console.error(`Error submitting scores for student ${student.id}:`, error);
+                }
+            }
+
+            alert(`Successfully submitted scores for ${submittedCount} student(s)!`);
+            await this.renderScoredStudents();
+            
+            // Disable both buttons after successful submission
+            await this.disableAllButtons();
+            
+            // Refresh current student view if one is selected
+            if (this.currentStudentId) {
+                await this.selectStudent(this.currentStudentId);
+            }
+        } catch (error) {
+            console.error('Error submitting all scores:', error);
+            alert('Error submitting all scores. Please try again.');
         }
     },
 
@@ -1040,31 +1189,40 @@ const JudgeView = {
                 students = students.filter(s => s.group_id === this.selectedGradeId);
             }
             
+            if (students.length === 0) {
+                container.innerHTML = '<p class="empty-message">No students assigned to this grade.</p>';
+                return;
+            }
+            
             const criteria = await DataManager.getCriteria();
 
+            // Filter to only show students with at least one score
             const scoredStudents = [];
             for (const student of students) {
-                let hasScore = false;
+                let hasAnyScore = false;
                 for (const criterion of criteria) {
                     const score = await DataManager.getScore(student.id, user.id, criterion.id);
                     if (score !== null) {
-                        hasScore = true;
+                        hasAnyScore = true;
                         break;
                     }
                 }
-                if (hasScore) {
+                if (hasAnyScore) {
                     scoredStudents.push(student);
                 }
             }
 
             if (scoredStudents.length === 0) {
                 container.innerHTML = '<p class="empty-message">No students scored yet.</p>';
+                // Update Submit All button state
+                await this.updateSubmitAllButtonState();
                 return;
             }
 
             const cards = await Promise.all(scoredStudents.map(async student => {
                 const submitted = await DataManager.isSubmitted(student.id, user.id);
                 let total = 0;
+                
                 for (const criterion of criteria) {
                     const score = await DataManager.getScore(student.id, user.id, criterion.id);
                     if (score !== null) {
@@ -1100,12 +1258,139 @@ const JudgeView = {
             }));
 
             container.innerHTML = cards.join('');
+            
+            // Update Submit All button state
+            await this.updateSubmitAllButtonState();
         } catch (error) {
             console.error('Error rendering scored students:', error);
             const container = document.getElementById('scored-students-list');
             if (container) {
                 container.innerHTML = '<p class="empty-message">Error loading scored students.</p>';
             }
+            // Still update button state even on error
+            await this.updateSubmitAllButtonState();
+        }
+    },
+
+    /**
+     * Update Submit All button state based on whether all students are scored and submitted
+     */
+    async updateSubmitAllButtonState() {
+        try {
+            const submitAllBtn = document.getElementById('submit-all-scores');
+            const addScoreBtn = document.getElementById('save-scores');
+            
+            if (!submitAllBtn) return;
+
+            const user = await AuthManager.getCurrentUser();
+            if (!user) return;
+
+            // Check if a grade is selected
+            if (!this.selectedGradeId) {
+                submitAllBtn.disabled = true;
+                submitAllBtn.classList.add('btn-disabled');
+                if (addScoreBtn) {
+                    addScoreBtn.disabled = true;
+                    addScoreBtn.classList.add('btn-disabled');
+                }
+                return;
+            }
+
+            // Get all students assigned to judge for the selected grade
+            let students = await GroupManager.getStudentsForJudge(user.id);
+            students = students.filter(s => s.group_id === this.selectedGradeId);
+
+            if (students.length === 0) {
+                submitAllBtn.disabled = true;
+                submitAllBtn.classList.add('btn-disabled');
+                if (addScoreBtn) {
+                    addScoreBtn.disabled = true;
+                    addScoreBtn.classList.add('btn-disabled');
+                }
+                return;
+            }
+
+            const criteria = await DataManager.getCriteria();
+
+            // Check if all students are submitted
+            let allSubmitted = true;
+            for (const student of students) {
+                const submitted = await DataManager.isSubmitted(student.id, user.id);
+                if (!submitted) {
+                    allSubmitted = false;
+                    break;
+                }
+            }
+
+            // If all students are submitted, disable both buttons
+            if (allSubmitted) {
+                submitAllBtn.disabled = true;
+                submitAllBtn.classList.add('btn-disabled');
+                if (addScoreBtn) {
+                    addScoreBtn.disabled = true;
+                    addScoreBtn.classList.add('btn-disabled');
+                }
+                return;
+            }
+
+            // Check if all students have at least one score
+            let allScored = true;
+            for (const student of students) {
+                let hasAnyScore = false;
+                for (const criterion of criteria) {
+                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
+                    if (score !== null) {
+                        hasAnyScore = true;
+                        break;
+                    }
+                }
+                if (!hasAnyScore) {
+                    allScored = false;
+                    break;
+                }
+            }
+
+            // Enable Submit All button only if all students are scored (but not yet submitted)
+            if (allScored) {
+                submitAllBtn.disabled = false;
+                submitAllBtn.classList.remove('btn-disabled');
+            } else {
+                submitAllBtn.disabled = true;
+                submitAllBtn.classList.add('btn-disabled');
+            }
+            
+            // Add score button state is managed by updateButtonStates()
+        } catch (error) {
+            console.error('Error updating Submit All button state:', error);
+            // On error, disable button to be safe
+            const submitAllBtn = document.getElementById('submit-all-scores');
+            const addScoreBtn = document.getElementById('save-scores');
+            if (submitAllBtn) {
+                submitAllBtn.disabled = true;
+                submitAllBtn.classList.add('btn-disabled');
+            }
+            if (addScoreBtn) {
+                addScoreBtn.disabled = true;
+                addScoreBtn.classList.add('btn-disabled');
+            }
+        }
+    },
+
+    /**
+     * Disable both Submit All and Add score buttons
+     */
+    async disableAllButtons() {
+        const submitAllBtn = document.getElementById('submit-all-scores');
+        const addScoreBtn = document.getElementById('save-scores');
+        
+        if (submitAllBtn) {
+            submitAllBtn.disabled = true;
+            submitAllBtn.classList.add('btn-disabled');
+        }
+        
+        if (addScoreBtn) {
+            addScoreBtn.disabled = true;
+            addScoreBtn.classList.add('btn-disabled');
         }
     },
 
