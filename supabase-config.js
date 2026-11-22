@@ -13,7 +13,10 @@ const SUPABASE_CONFIG = {
     url: 'https://uueilgnjodakvxamwvbe.supabase.co',
     
     // Your Supabase anon/public key (safe to expose in client-side code)
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1ZWlsZ25qb2Rha3Z4YW13dmJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxMjI5NzAsImV4cCI6MjA4MjY5ODk3MH0.BDmk7qbgCoZbUGnx0ckNPSmfE0wBAW7cwK3vrmRU92o'
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1ZWlsZ25qb2Rha3Z4YW13dmJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxMjI5NzAsImV4cCI6MjA4MjY5ODk3MH0.BDmk7qbgCoZbUGnx0ckNPSmfE0wBAW7cwK3vrmRU92o',
+
+    // Where the login session (token + user) is kept in localStorage
+    sessionKey: 'vidyapith_session'
 };
 
 // Export for use in other modules

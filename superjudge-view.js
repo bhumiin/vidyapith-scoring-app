@@ -636,6 +636,7 @@ const SuperJudgeView = {
                             max="${maxScore}" 
                             value="${score || ''}" 
                             data-criterion-id="${criterion.id}"
+                            data-original="${score === null || score === undefined ? '' : score}"
                             class="score-input"
                             onchange="SuperJudgeView.updateEditScore('${criterion.id}', this.value)"
                         >
@@ -697,6 +698,8 @@ const SuperJudgeView = {
             for (const input of inputs) {
                 const criterionId = input.dataset.criterionId;
                 const value = input.value;
+                // only write the criteria the super judge actually changed
+                if (value && value === input.dataset.original) continue;
                 if (value && value !== '') {
                     const score = parseInt(value);
                     const minScore = parseInt(input.min) || 1;

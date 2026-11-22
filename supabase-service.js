@@ -5,51 +5,101 @@
 
 // Initialize Supabase client
 let supabaseClient = null;
+let supabaseClientToken = null;
 
 /**
- * Initialize Supabase client
+ * The stored login session: { token, expiresAt, userId, username, name, role }
+ */
+function currentSession() {
+    try {
+        const raw = localStorage.getItem((SUPABASE_CONFIG && SUPABASE_CONFIG.sessionKey) || 'vidyapith_session');
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * The bearer token to send, or null when there is no usable session.
+ */
+function currentToken() {
+    const session = currentSession();
+    if (!session || !session.token) return null;
+    if (session.expiresAt && new Date(session.expiresAt) <= new Date()) return null;
+    return session.token;
+}
+
+/**
+ * Build a client. With a token, every request carries it and Postgres decides
+ * what this user may read or write; without one, only login() is callable.
+ */
+function createSupabaseClient(token) {
+    const headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    return supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+        db: {
+            schema: 'public'
+        },
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false
+        },
+        global: {
+            headers: headers
+        }
+    });
+}
+
+/**
+ * Get Supabase client instance (rebuilt automatically when the session changes)
+ */
+function getSupabaseClient() {
+    const token = currentToken();
+    if (!supabaseClient || supabaseClientToken !== token) {
+        supabaseClient = createSupabaseClient(token);
+        supabaseClientToken = token;
+    }
+    return supabaseClient;
+}
+
+/**
+ * Initialize Supabase client (kept for compatibility)
  */
 function initSupabase() {
     if (typeof supabase === 'undefined') {
         console.error('Supabase client library not loaded. Please include the Supabase script in your HTML.');
         return null;
     }
-    
+
     if (!SUPABASE_CONFIG || !SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
         console.error('Supabase configuration missing. Please set SUPABASE_CONFIG in supabase-config.js');
         return null;
     }
-    
-    if (SUPABASE_CONFIG.url === 'YOUR_SUPABASE_PROJECT_URL' || SUPABASE_CONFIG.anonKey === 'YOUR_SUPABASE_ANON_KEY') {
-        console.error('Please configure your Supabase credentials in supabase-config.js');
-        return null;
-    }
-    
-    supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
-        db: {
-            schema: 'public'
-        },
-        auth: {
-            persistSession: false
-        },
-        global: {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        }
-    });
-    return supabaseClient;
+
+    supabaseClient = null;
+    supabaseClientToken = null;
+    return getSupabaseClient();
 }
 
 /**
- * Get Supabase client instance
+ * Turn a PostgREST error into something worth showing a person.
  */
-function getSupabaseClient() {
-    if (!supabaseClient) {
-        initSupabase();
+function sqlError(error, fallback) {
+    if (!error) return new Error(fallback || 'Database request failed');
+    const message = error.message || error.error_description || fallback || 'Database request failed';
+    const err = new Error(message);
+    err.code = error.code;
+    err.details = error.details;
+    if (error.code === '42501' || /row-level security|permission denied/i.test(message)) {
+        err.message = 'You do not have permission to do that.';
+    } else if (error.code === '23505') {
+        err.message = 'That username already exists.';
     }
-    return supabaseClient;
+    return err;
 }
 
 const SupabaseService = {
@@ -62,6 +112,35 @@ const SupabaseService = {
             throw new Error('Failed to initialize Supabase client');
         }
         return client;
+    },
+
+    /**
+     * Log in. The password is verified inside Postgres; the reply carries a
+     * short-lived token that the client sends on every later request.
+     * @returns {Promise<{ok: boolean, token?: string, expires_at?: string, user?: object, error?: string}>}
+     */
+    async login(username, password, role) {
+        const client = createSupabaseClient(null);  // login itself is anonymous
+        const { data, error } = await client.rpc('login', {
+            p_username: username,
+            p_role: role,
+            p_password: password
+        });
+        if (error) throw sqlError(error, 'Could not reach the database');
+        return data;
+    },
+
+    /**
+     * Change someone's password (admin only — enforced in Postgres)
+     */
+    async setPassword(role, id, password) {
+        const { data, error } = await getSupabaseClient().rpc('admin_set_password', {
+            p_role: role,
+            p_id: id,
+            p_password: password
+        });
+        if (error) throw sqlError(error, 'Could not set the password');
+        return data;
     },
 
     // ==================== STUDENTS ====================
@@ -146,24 +225,26 @@ const SupabaseService = {
         }
     },
 
-    async addJudge(name, username, passwordHash) {
-        try {
-            const { data, error } = await getSupabaseClient()
-                .from('judges')
-                .insert([{
-                    name: name.trim(),
-                    username: username.trim(),
-                    password_hash: passwordHash
-                }])
-                .select()
-                .single();
-            
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('Error adding judge:', error);
-            throw error;
-        }
+    async addJudge(name, username, password) {
+        const { data, error } = await getSupabaseClient().rpc('admin_create_judge', {
+            p_name: name,
+            p_username: username,
+            p_password: password
+        });
+        if (error) throw sqlError(error, 'Could not add the judge');
+        return data;
+    },
+
+    // Create the judge, or update name/password when the username already exists
+    // (used by the Excel import). Returns { judge, created }.
+    async upsertJudge(name, username, password) {
+        const { data, error } = await getSupabaseClient().rpc('admin_upsert_judge', {
+            p_name: name,
+            p_username: username,
+            p_password: password || null
+        });
+        if (error) throw sqlError(error, 'Could not import the judge');
+        return data;
     },
 
     async removeJudge(id) {
@@ -177,68 +258,6 @@ const SupabaseService = {
             return true;
         } catch (error) {
             console.error('Error removing judge:', error);
-            throw error;
-        }
-    },
-
-    async getJudgeByUsername(username) {
-        try {
-            // First try the direct query approach
-            const { data, error } = await getSupabaseClient()
-                .from('judges')
-                .select('*')
-                .eq('username', username)
-                .limit(1);
-            
-            if (error) {
-                // Handle 406 Not Acceptable error or other errors
-                if (error.status === 406 || error.code === 'PGRST301') {
-                    console.warn('406 error when querying judge, using fallback approach');
-                    // Fallback: get all judges and filter client-side
-                    const allJudges = await this.getJudges();
-                    return allJudges.find(j => j.username === username) || null;
-                }
-                throw error;
-            }
-            
-            // Return first match or null
-            return data && data.length > 0 ? data[0] : null;
-        } catch (error) {
-            console.error('Error fetching judge by username:', error);
-            // Fallback: try getting all judges and filtering
-            try {
-                const allJudges = await this.getJudges();
-                return allJudges.find(j => j.username === username) || null;
-            } catch (fallbackError) {
-                console.error('Fallback query also failed:', fallbackError);
-                throw error; // Throw original error
-            }
-        }
-    },
-
-    async updateJudge(id, name, username, passwordHash) {
-        try {
-            const updateData = {
-                name: name.trim(),
-                username: username.trim()
-            };
-            
-            // Only update password if provided
-            if (passwordHash) {
-                updateData.password_hash = passwordHash;
-            }
-            
-            const { data, error } = await getSupabaseClient()
-                .from('judges')
-                .update(updateData)
-                .eq('id', id)
-                .select()
-                .single();
-            
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('Error updating judge:', error);
             throw error;
         }
     },
@@ -260,24 +279,14 @@ const SupabaseService = {
         }
     },
 
-    async addSuperJudge(name, username, passwordHash) {
-        try {
-            const { data, error } = await getSupabaseClient()
-                .from('super_judges')
-                .insert([{
-                    name: name.trim(),
-                    username: username.trim(),
-                    password_hash: passwordHash
-                }])
-                .select()
-                .single();
-            
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('Error adding super judge:', error);
-            throw error;
-        }
+    async addSuperJudge(name, username, password) {
+        const { data, error } = await getSupabaseClient().rpc('admin_create_super_judge', {
+            p_name: name,
+            p_username: username,
+            p_password: password
+        });
+        if (error) throw sqlError(error, 'Could not add the super judge');
+        return data;
     },
 
     async removeSuperJudge(id) {
@@ -291,40 +300,6 @@ const SupabaseService = {
             return true;
         } catch (error) {
             console.error('Error removing super judge:', error);
-            throw error;
-        }
-    },
-
-    async getSuperJudgeByUsername(username) {
-        try {
-            const { data, error } = await getSupabaseClient()
-                .from('super_judges')
-                .select('*')
-                .eq('username', username)
-                .single();
-            
-            if (error && error.code !== 'PGRST116') throw error;
-            return data || null;
-        } catch (error) {
-            console.error('Error fetching super judge by username:', error);
-            throw error;
-        }
-    },
-
-    // ==================== ADMIN USERS ====================
-    
-    async getAdminByUsername(username) {
-        try {
-            const { data, error } = await getSupabaseClient()
-                .from('admin_users')
-                .select('*')
-                .eq('username', username)
-                .single();
-            
-            if (error && error.code !== 'PGRST116') throw error;
-            return data || null;
-        } catch (error) {
-            console.error('Error fetching admin by username:', error);
             throw error;
         }
     },

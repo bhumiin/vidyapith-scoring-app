@@ -1001,16 +1001,22 @@ const JudgeView = {
 
             // All students are complete - submit all scores
             let submittedCount = 0;
+            const failures = [];
             for (const student of students) {
                 try {
                     await DataManager.submitScores(student.id, user.id);
                     submittedCount++;
                 } catch (error) {
-                    console.error(`Error submitting scores for student ${student.id}:`, error);
+                    console.error(`Error submitting scores for ${student.name}:`, error);
+                    failures.push(`${student.name}: ${error.message || error}`);
                 }
             }
 
-            alert(`Successfully submitted scores for ${submittedCount} student(s)!`);
+            if (failures.length > 0) {
+                alert(`Submitted ${submittedCount} of ${students.length} student(s).\n\nThese failed:\n${failures.join('\n')}`);
+            } else {
+                alert(`Successfully submitted scores for ${submittedCount} student(s)!`);
+            }
             await this.renderScoredStudents();
             
             // Disable both buttons after successful submission

@@ -1,0 +1,6 @@
+# Files that do not need to be served by Vercel
+supabase/
+scripts/
+*.md
+.cursorrules
+.cursorrules.md

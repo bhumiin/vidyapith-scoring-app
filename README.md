@@ -70,9 +70,18 @@ A web-based scoring application for managing student evaluations during Youth Da
 
 ## Data Storage
 
-All data is stored in browser localStorage. To backup:
-- Use the Export Configuration feature in Admin view
-- This exports all data as JSON
+All data lives in Supabase (Postgres). The browser keeps only the login token.
+To back up, use the Export Configuration feature in Admin view, or Supabase's own
+database backups.
+
+## Access control
+
+Logins are verified inside the database (`public.login()`), which returns a signed,
+12-hour token that the browser sends on every request. Row-level security then decides
+what each role may read or write — a judge only sees their own grade, cannot score
+another grade's students, and cannot change scores after submitting. The database
+schema, the rules and the rollout procedure are documented in
+[`supabase/README.md`](supabase/README.md).
 
 ## Export Formats
 
@@ -90,10 +99,13 @@ Works best in modern browsers (Chrome, Firefox, Safari, Edge). Requires JavaScri
 
 ## Notes
 
-- Passwords are stored with simple hashing (not production-grade security)
-- All data is stored locally - clearing browser data will delete all information
-- Export your data regularly for backup
-- Admin login: username `admin`, password `admin` (change in production)
+- Passwords are hashed with bcrypt inside Postgres and never leave the database.
+- There is no `admin`/`admin` fallback any more: admins need a real account in
+  `private.credentials` (created by the setup script or by `admin_set_password`).
+- Judge accounts are created by an admin (Judges tab or Excel import), which also
+  stores the password hash.
+- If nobody can log in after a database change, run `scripts/verify_security.py`
+  (see `supabase/README.md`) before touching the client.
 
 ## Support
 

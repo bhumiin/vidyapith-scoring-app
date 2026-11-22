@@ -1,10 +1,15 @@
 /**
  * Authentication Module
  * Handles user authentication and session management using Supabase
+ *
+ * The password is never verified in the browser any more: login() sends it to
+ * a Postgres function, which checks the bcrypt hash and returns a signed token.
+ * Every later request carries that token, and Postgres decides what the caller
+ * may read or write.
  */
 
 const AuthManager = {
-    SESSION_KEY: 'vidyapith_session',
+    SESSION_KEY: (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.sessionKey) || 'vidyapith_session',
 
     /**
      * Authenticate a user
@@ -15,65 +20,31 @@ const AuthManager = {
      */
     async login(username, password, role) {
         try {
-            if (role === 'judge') {
-                const judge = await SupabaseService.getJudgeByUsername(username);
-                if (judge) {
-                    const isValid = await PasswordUtils.verifyPassword(password, judge.password_hash);
-                    if (isValid) {
-                        this.setSession({
-                            userId: judge.id,
-                            username: judge.username,
-                            name: judge.name,
-                            role: 'judge'
-                        });
-                        return { success: true, user: judge };
-                    }
-                }
-            } else if (role === 'superjudge') {
-                const superJudge = await SupabaseService.getSuperJudgeByUsername(username);
-                if (superJudge) {
-                    const isValid = await PasswordUtils.verifyPassword(password, superJudge.password_hash);
-                    if (isValid) {
-                        this.setSession({
-                            userId: superJudge.id,
-                            username: superJudge.username,
-                            name: superJudge.name,
-                            role: 'superjudge'
-                        });
-                        return { success: true, user: superJudge };
-                    }
-                }
-            } else if (role === 'admin') {
-                const admin = await SupabaseService.getAdminByUsername(username);
-                if (admin) {
-                    const isValid = await PasswordUtils.verifyPassword(password, admin.password_hash);
-                    if (isValid) {
-                        this.setSession({
-                            userId: admin.id,
-                            username: admin.username,
-                            name: 'Administrator',
-                            role: 'admin'
-                        });
-                        return { success: true, user: { id: admin.id, name: 'Administrator', role: 'admin' } };
-                    }
-                } else {
-                    // Fallback: check for default admin credentials (for initial setup)
-                    if (username === 'admin' && password === 'admin') {
-                        this.setSession({
-                            userId: 'admin',
-                            username: 'admin',
-                            name: 'Administrator',
-                            role: 'admin'
-                        });
-                        return { success: true, user: { id: 'admin', name: 'Administrator', role: 'admin' } };
-                    }
-                }
+            const result = await SupabaseService.login(username, password, role);
+
+            if (!result || !result.ok) {
+                return {
+                    success: false,
+                    error: (result && result.error) || 'Invalid username or password'
+                };
             }
 
-            return { success: false, error: 'Invalid username or password' };
+            this.setSession({
+                token: result.token,
+                expiresAt: result.expires_at,
+                userId: result.user.id,
+                username: result.user.username,
+                name: result.user.name,
+                role: result.user.role
+            });
+
+            return { success: true, user: result.user };
         } catch (error) {
             console.error('Login error:', error);
-            return { success: false, error: 'Authentication failed. Please try again.' };
+            return {
+                success: false,
+                error: error.message || 'Cannot reach the database. Please try again.'
+            };
         }
     },
 
@@ -93,10 +64,16 @@ const AuthManager = {
     },
 
     /**
-     * Check if user is logged in
+     * Check if user is logged in (and the token has not expired)
      */
     isLoggedIn() {
-        return this.getSession() !== null;
+        const session = this.getSession();
+        if (!session || !session.token) return false;
+        if (session.expiresAt && new Date(session.expiresAt) <= new Date()) {
+            this.logout();
+            return false;
+        }
+        return true;
     },
 
     /**
@@ -109,6 +86,7 @@ const AuthManager = {
 
         try {
             if (session.role === 'judge') {
+                // Postgres returns only this judge's own row
                 const judges = await SupabaseService.getJudges();
                 return judges.find(j => j.id === session.userId) || null;
             } else if (session.role === 'superjudge') {
@@ -140,4 +118,3 @@ const AuthManager = {
         localStorage.removeItem(this.SESSION_KEY);
     }
 };
-

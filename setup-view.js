@@ -1690,33 +1690,20 @@ const SetupView = {
                     continue;
                 }
                 
-                // Check if judge exists
-                const existingJudge = await SupabaseService.getJudgeByUsername(username);
-                
-                if (existingJudge) {
-                    // Update existing judge
-                    const passwordHash = await PasswordUtils.hashPassword(password);
-                    await SupabaseService.updateJudge(existingJudge.id, name, username, passwordHash);
-                    
-                    // Remove old group assignments
-                    const oldGroupIds = await SupabaseService.getJudgeGroups(existingJudge.id);
-                    for (const oldGroupId of oldGroupIds) {
-                        await SupabaseService.removeJudgeFromGroup(existingJudge.id, oldGroupId);
-                    }
-                    
-                    // Assign to new group
-                    await SupabaseService.assignJudgeToGroup(existingJudge.id, groupId);
-                    
-                    judgesUpdated.push(existingJudge.id);
+                // Create the judge, or update name/password if the username exists
+                const { judge, created } = await DataManager.upsertJudge(name, username, password);
+
+                // Judges belong to exactly one grade after an import
+                const oldGroupIds = await SupabaseService.getJudgeGroups(judge.id);
+                for (const oldGroupId of oldGroupIds) {
+                    await SupabaseService.removeJudgeFromGroup(judge.id, oldGroupId);
+                }
+                await SupabaseService.assignJudgeToGroup(judge.id, groupId);
+
+                if (created) {
+                    judgesCreated.push(judge.id);
                 } else {
-                    // Create new judge
-                    const passwordHash = await PasswordUtils.hashPassword(password);
-                    const newJudge = await SupabaseService.addJudge(name, username, passwordHash);
-                    
-                    // Assign to group
-                    await SupabaseService.assignJudgeToGroup(newJudge.id, groupId);
-                    
-                    judgesCreated.push(newJudge.id);
+                    judgesUpdated.push(judge.id);
                 }
             } catch (error) {
                 console.error(`Error processing judge "${judgeInfo.name}":`, error);
