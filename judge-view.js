@@ -476,7 +476,7 @@ const JudgeView = {
 
             const reason = await UI.modal.prompt({
                 title: `Take ${name} out of scoring?`,
-                message: 'Their draft scores for this grade are dropped and they stop counting towards Submit All.',
+                message: 'Use this when a student is absent and cannot be scored.',
                 input: {
                     label: 'Reason (optional)',
                     placeholder: 'Absent, moved, could not present…'
