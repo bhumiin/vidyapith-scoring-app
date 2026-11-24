@@ -3092,3 +3092,54 @@ body[data-view="judge"] .score-chip.on:disabled {
     color: var(--color-on-brand);
     opacity: 0.85;
 }
+
+/* excluded: off the roster, not a zero */
+body[data-view="judge"] .stu-lock--excluded {
+    background: var(--color-line-soft);
+    color: var(--color-ink-soft);
+}
+
+body[data-view="judge"] .stu-action {
+    align-self: center;
+    margin-left: auto;
+    padding: 4px var(--space-2);
+    background: none;
+    border: var(--border-hairline);
+    border-radius: var(--radius-sm);
+    color: var(--color-ink-soft);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+}
+
+body[data-view="judge"] .stu-action:hover:not(:disabled) {
+    background: var(--color-brand-tint);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
+}
+
+body[data-view="judge"] .stu-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* the total keeps its place even with the action button present */
+body[data-view="judge"] .stu-head .stu-total {
+    margin-left: 0;
+}
+
+body[data-view="judge"] .class-row__status.excluded {
+    color: var(--color-ink-soft);
+}
+
+body[data-view="judge"] .class-row.is-excluded .class-row__name {
+    color: var(--color-ink-soft);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
+body[data-view="judge"] .notes-textarea:disabled {
+    background: var(--color-line-soft);
+    color: var(--color-muted);
+    cursor: not-allowed;
+}

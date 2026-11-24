@@ -223,6 +223,7 @@
                         <button type="button" data-filter="todo">Not started</button>
                         <button type="button" data-filter="draft">Draft</button>
                         <button type="button" data-filter="submitted">Submitted</button>
+                        <button type="button" data-filter="excluded">Excluded</button>
                     </div>
                     <div id="scored-students-list" class="class-list"></div>
                     <div class="class-panel__foot">
@@ -237,6 +238,8 @@
                         <div class="stu-head">
                             <h2 id="current-student-name"></h2>
                             <span id="student-lock" class="stu-lock" hidden>Submitted · locked</span>
+                            <span id="student-excluded" class="stu-lock stu-lock--excluded" hidden>Excluded</span>
+                            <button id="student-exclude-toggle" class="stu-action" type="button" hidden>Mark absent</button>
                             <div class="stu-total">
                                 <span class="lab">Total</span>
                                 <span id="judge-total-score">0</span>

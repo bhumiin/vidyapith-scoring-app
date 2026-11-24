@@ -719,6 +719,76 @@ const SupabaseService = {
         }
     },
 
+    // ==================== EXCLUSIONS ====================
+
+    /**
+     * Students a judge has taken out of their round (absent, moved, unable to
+     * present). 009_notes_lock_and_exclusions.sql. A judge sees their own rows,
+     * staff see all of them.
+     */
+    async getExclusions() {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('student_exclusions')
+                .select('student_id, judge_id, reason, excluded_at');
+
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching exclusions:', error);
+            throw error;
+        }
+    },
+
+    async setExclusion(studentId, judgeId, reason) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('student_exclusions')
+                .upsert({
+                    student_id: studentId,
+                    judge_id: judgeId,
+                    reason: reason || ''
+                }, { onConflict: 'student_id,judge_id' })
+                .select()
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116' || error.code === '42501' || error.code === '23514') {
+                    const locked = new Error('Cannot exclude this student - the grade is already submitted.');
+                    locked.code = 'EXCLUSION_LOCKED';
+                    throw locked;
+                }
+                throw error;
+            }
+            return data;
+        } catch (error) {
+            console.error('Error excluding student:', error);
+            throw error;
+        }
+    },
+
+    async clearExclusion(studentId, judgeId) {
+        try {
+            const { data, error } = await getSupabaseClient()
+                .from('student_exclusions')
+                .delete()
+                .eq('student_id', studentId)
+                .eq('judge_id', judgeId)
+                .select('id');
+
+            if (error) throw error;
+            if (!data || !data.length) {
+                const locked = new Error('Cannot restore this student - the grade is already submitted.');
+                locked.code = 'EXCLUSION_LOCKED';
+                throw locked;
+            }
+            return true;
+        } catch (error) {
+            console.error('Error restoring student:', error);
+            throw error;
+        }
+    },
+
     async getAllScores() {
         try {
             const { data, error } = await getSupabaseClient()
@@ -850,8 +920,16 @@ const SupabaseService = {
                 })
                 .select()
                 .single();
-            
-            if (error) throw error;
+
+            if (error) {
+                // 42501 / PGRST116: refused because the student is submitted
+                if (error.code === 'PGRST116' || error.code === '42501') {
+                    const locked = new Error('This student is submitted - the record is locked.');
+                    locked.code = 'NOTE_LOCKED';
+                    throw locked;
+                }
+                throw error;
+            }
             return data;
         } catch (error) {
             console.error('Error setting note:', error);

@@ -6,6 +6,8 @@
 const JudgeView = {
     currentStudentId: null,
     currentSubmitted: false,
+    currentExcluded: false,
+    currentExclusionReason: '',
     currentScores: {},
     currentNotes: '',
     selectedGradeId: null,
@@ -56,6 +58,15 @@ const JudgeView = {
                 this._classFilter = button.dataset.filter;
                 filters.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('on', b === button));
                 this.drawClassList();
+            });
+        }
+
+        const excludeToggle = document.getElementById('student-exclude-toggle');
+        if (excludeToggle) {
+            excludeToggle.addEventListener('click', () => {
+                this.toggleExclusion().catch(error => {
+                    console.error('Error changing the roster:', error);
+                });
             });
         }
 
@@ -237,11 +248,12 @@ const JudgeView = {
         }
 
         try {
-            const [studentsAll, criteria, scores, submissions] = await Promise.all([
+            const [studentsAll, criteria, scores, submissions, exclusions] = await Promise.all([
                 GroupManager.getStudentsForJudge(user.id),
                 DataManager.getCriteria(),
                 DataManager.getScores(),
-                DataManager.getSubmissions()
+                DataManager.getSubmissions(),
+                DataManager.getExclusions()
             ]);
 
             const students = studentsAll.filter(s => s.group_id === this.selectedGradeId);
@@ -253,6 +265,7 @@ const JudgeView = {
                 const required = criteria.filter(c => !DataManager.isPenaltyCriterion(c));
                 const complete = required.length > 0 && required.every(c => hasScore(byJudge[c.id]));
                 const submitted = (submissions[student.id] || []).includes(user.id);
+                const excluded = Object.prototype.hasOwnProperty.call(exclusions, student.id);
                 const total = DataManager.totalForJudge(criteria, c => hasScore(byJudge[c.id]) ? byJudge[c.id] : null);
                 return {
                     id: student.id,
@@ -261,7 +274,11 @@ const JudgeView = {
                     complete: complete,
                     scored: scoredCount,
                     required: required.length,
-                    status: submitted ? 'submitted' : scoredCount > 0 ? 'draft' : 'todo'
+                    excluded: excluded,
+                    reason: exclusions[student.id] || '',
+                    // a submitted student is final, so it outranks a stray
+                    // exclusion left over from before the submission
+                    status: submitted ? 'submitted' : excluded ? 'excluded' : scoredCount > 0 ? 'draft' : 'todo'
                 };
             });
 
@@ -293,38 +310,51 @@ const JudgeView = {
             container.innerHTML = '<p class="class-empty">No student matches.</p>';
         } else {
             const initials = name => name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
-            const label = status => status === 'submitted' ? 'Submitted' : status === 'draft' ? 'Draft' : 'Not started';
+            const label = status => status === 'submitted' ? 'Submitted'
+                : status === 'excluded' ? 'Excluded'
+                : status === 'draft' ? 'Draft' : 'Not started';
             container.innerHTML = rows.map(row => `
-                <button type="button" class="class-row ${row.id === this.currentStudentId ? 'on' : ''}"
-                        data-student-id="${row.id}">
+                <button type="button" class="class-row ${row.id === this.currentStudentId ? 'on' : ''} ${row.status === 'excluded' ? 'is-excluded' : ''}"
+                        data-student-id="${row.id}" title="${row.status === 'excluded' && row.reason ? row.reason.replace(/"/g, '&quot;') : ''}">
                     <span class="class-row__av">${initials(row.name)}</span>
                     <span class="class-row__txt">
                         <span class="class-row__name">${row.name}</span>
                         <span class="class-row__status ${row.status}">${label(row.status)}</span>
                     </span>
-                    <span class="class-row__total">${row.status === 'todo' ? '—' : row.total + '<small>/40</small>'}</span>
+                    <span class="class-row__total">${row.status === 'todo' || row.status === 'excluded' ? '—' : row.total + '<small>/40</small>'}</span>
                 </button>
             `).join('');
         }
 
-        // counts + progress on the panel
+        // counts + progress on the panel. Excluded students are not scored and
+        // not submitted, so they leave the denominator instead of blocking it.
         const submitted = all.filter(r => r.status === 'submitted').length;
         const draft = all.filter(r => r.status === 'draft').length;
         const todo = all.filter(r => r.status === 'todo').length;
+        const excluded = all.filter(r => r.status === 'excluded').length;
+        const scorable = all.length - excluded;
+
         const countEl = document.getElementById('class-count');
-        if (countEl) countEl.textContent = all.length ? `${submitted} of ${all.length} submitted` : '—';
+        if (countEl) {
+            countEl.textContent = all.length
+                ? `${submitted} of ${scorable} submitted${excluded ? ` · ${excluded} excluded` : ''}`
+                : '—';
+        }
 
         const labelEl = document.getElementById('class-progress-label');
-        if (labelEl) labelEl.textContent = all.length
-            ? `${submitted} submitted · ${draft} draft · ${todo} not started`
-            : '';
+        if (labelEl) {
+            const parts = [`${submitted} submitted`, `${draft} draft`, `${todo} not started`];
+            if (excluded) parts.push(`${excluded} excluded`);
+            labelEl.textContent = all.length ? parts.join(' · ') : '';
+        }
 
         const bar = document.getElementById('class-progress-bar');
-        if (bar) bar.style.width = all.length ? Math.round((submitted / all.length) * 100) + '%' : '0%';
+        if (bar) bar.style.width = scorable > 0 ? Math.round((submitted / scorable) * 100) + '%' : '0%';
 
         const nextOpen = document.getElementById('next-open');
         if (nextOpen) {
-            const nothingLeft = all.length > 0 && all.every(r => r.status === 'submitted');
+            const openable = all.filter(r => r.status === 'todo' || r.status === 'draft');
+            const nothingLeft = all.length > 0 && openable.length === 0;
             nextOpen.disabled = nothingLeft || all.length === 0;
             nextOpen.classList.toggle('btn-disabled', nextOpen.disabled);
             nextOpen.title = nothingLeft
@@ -351,9 +381,9 @@ const JudgeView = {
 
     /** Move to the next student who is not saved yet, in list order. */
     async nextOpenStudent() {
-        const open = (this._classRows || []).filter(r => r.status !== 'saved');
+        const open = (this._classRows || []).filter(r => r.status === 'todo' || r.status === 'draft');
         if (!open.length) {
-            UI.toast('Every student in this grade is already submitted.', { type: 'success' });
+            UI.toast('Nothing left to score in this grade.', { type: 'success' });
             return;
         }
         const index = open.findIndex(r => r.id === this.currentStudentId);
@@ -376,18 +406,9 @@ const JudgeView = {
         const user = await AuthManager.getCurrentUser();
         if (!user) return 0;
 
-        const submitted = await DataManager.isSubmitted(studentId, user.id);
-        if (submitted) {
-            // Scores are final once submitted; the note is still the judge's own
-            const notesEl = document.getElementById('judge-notes-input');
-            const nextNotes = notesEl ? notesEl.value : this.currentNotes;
-            if (nextNotes !== (this.savedNotes || '')) {
-                await SupabaseService.setNote(studentId, user.id, nextNotes || '');
-                this.savedNotes = nextNotes || '';
-                return 1;
-            }
-            return 0;
-        }
+        // nothing about a submitted record can change - scores or note
+        if (await DataManager.isSubmitted(studentId, user.id)) return 0;
+        if (this.currentExcluded) return 0;
 
         const criteria = this.currentCriteria || [];
         const normalise = value => (value === '' || value === null || value === undefined) ? null : Number(value);
@@ -423,6 +444,74 @@ const JudgeView = {
     },
 
     /**
+     * Take a student out of this judge's round, or put them back.
+     *
+     * Absent, moved, or unable to present: scoring them would mean inventing a
+     * zero, and leaving them blank would block Submit All for the whole grade.
+     * An exclusion says "not scored, and here is why" instead. Any draft scores
+     * for that student are removed first - an excluded student with half a score
+     * would still count in the results.
+     */
+    async toggleExclusion() {
+        const user = await AuthManager.getCurrentUser();
+        if (!user || !this.currentStudentId) return;
+
+        if (this.currentSubmitted) {
+            UI.toast('The grade is submitted — the roster is final.', { type: 'error' });
+            return;
+        }
+
+        const studentId = this.currentStudentId;
+        const name = (document.getElementById('current-student-name') || {}).textContent || 'This student';
+
+        try {
+            if (this.currentExcluded) {
+                await DataManager.clearExclusion(studentId, user.id);
+                UI.toast(`${name} is back on the roster.`, { type: 'success' });
+                await this.renderClassList();
+                await this.selectStudent(studentId);
+                await this.updateSubmitAllButtonState();
+                return;
+            }
+
+            const reason = await UI.modal.prompt({
+                title: `Take ${name} out of scoring?`,
+                message: 'For a student who is absent or cannot present. Their draft scores for this grade are removed, and they no longer hold up Submit All.',
+                input: {
+                    label: 'Reason (optional)',
+                    placeholder: 'Absent, moved, could not present…'
+                },
+                confirmLabel: 'Exclude student',
+                cancelLabel: 'Keep scoring',
+                danger: true
+            });
+            if (reason === null) return;
+
+            // drop any draft rows first, so nothing half-scored survives
+            const criteria = await DataManager.getCriteria();
+            const scores = (await DataManager.getScores())[studentId] || {};
+            const mine = scores[user.id] || {};
+            for (const criterion of criteria) {
+                if (mine[criterion.id] === undefined || mine[criterion.id] === null || mine[criterion.id] === '') continue;
+                try {
+                    await SupabaseService.deleteScore(studentId, user.id, criterion.id);
+                } catch (error) {
+                    if (error.code !== 'SCORE_LOCKED') throw error;
+                }
+            }
+
+            await DataManager.setExclusion(studentId, user.id, reason);
+            UI.toast(`${name} excluded from scoring.`, { type: 'success' });
+            await this.renderClassList();
+            await this.selectStudent(studentId);
+            await this.updateSubmitAllButtonState();
+        } catch (error) {
+            console.error('Error changing the roster:', error);
+            UI.toast(error.message || 'Could not change the roster. Please try again.', { type: 'error' });
+        }
+    },
+
+    /**
      * A submitted student is final: the database refuses writes anyway, so the
      * chips must not pretend otherwise.
      */
@@ -430,17 +519,33 @@ const JudgeView = {
         document.querySelectorAll('.score-chip').forEach(chip => {
             chip.disabled = !!locked;
         });
+
+        // the note is part of the record, so it locks with the scores
+        const notesEl = document.getElementById('judge-notes-input');
+        if (notesEl) {
+            notesEl.disabled = !!locked;
+            notesEl.title = locked
+                ? (this.currentExcluded
+                    ? 'This student is excluded from scoring'
+                    : 'This student is submitted — the record is locked')
+                : '';
+        }
+
         const saveBtn = document.getElementById('save-scores');
         if (saveBtn && locked) {
             saveBtn.disabled = true;
             saveBtn.classList.add('btn-disabled');
-            saveBtn.title = 'This student is submitted — scores are locked';
+            saveBtn.title = this.currentExcluded
+                ? 'This student is excluded from scoring'
+                : 'This student is submitted — scores are locked';
         }
     },
 
     clearStudent() {
         this.currentStudentId = null;
         this.currentSubmitted = false;
+        this.currentExcluded = false;
+        this.currentExclusionReason = '';
         this.currentScores = {};
         this.savedScores = {};
         this.currentNotes = '';
@@ -544,13 +649,43 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
 
             this.currentSubmitted = await DataManager.isSubmitted(studentId, user.id);
+            const exclusions = await DataManager.getExclusions();
+            this.currentExcluded = Object.prototype.hasOwnProperty.call(exclusions, studentId);
+            this.currentExclusionReason = exclusions[studentId] || '';
 
             document.getElementById('current-student-name').textContent = student.name;
             // flex, not block: the card is a column with a scrolling middle and a pinned footer
             document.getElementById('judge-scoring-section').style.display = 'flex';
             document.getElementById('judge-no-student').style.display = 'none';
+
             const lockBadge = document.getElementById('student-lock');
             if (lockBadge) lockBadge.hidden = !this.currentSubmitted;
+
+            const excludedBadge = document.getElementById('student-excluded');
+            if (excludedBadge) {
+                excludedBadge.hidden = !this.currentExcluded;
+                excludedBadge.title = this.currentExclusionReason
+                    ? `Excluded: ${this.currentExclusionReason}`
+                    : 'Excluded from scoring';
+            }
+
+            // the roster closes with the round: once every scorable student in
+            // the grade is submitted, nobody may be added or taken out
+            const rows = this._classRows || [];
+            const scorable = rows.filter(row => row.status !== 'excluded');
+            const roundClosed = scorable.length > 0 && scorable.every(row => row.status === 'submitted');
+
+            const toggle = document.getElementById('student-exclude-toggle');
+            if (toggle) {
+                toggle.hidden = false;
+                toggle.textContent = this.currentExcluded ? 'Include again' : 'Mark absent';
+                toggle.disabled = this.currentSubmitted || roundClosed;
+                toggle.title = this.currentSubmitted || roundClosed
+                    ? 'The grade is submitted — the roster is final'
+                    : this.currentExcluded
+                        ? 'Put this student back on the roster'
+                        : 'Take this student out of your scoring (absent, moved, could not present)';
+            }
 
             // Load existing scores
             this.currentScores = {};
@@ -754,7 +889,7 @@ const JudgeView = {
 
             container.innerHTML = htmlOutput;
             this.paintScoreChips();
-            this.lockChips(this.currentSubmitted);
+            this.lockChips(this.currentSubmitted || this.currentExcluded);
             this.calculateTotal();
             this.updateButtonStates().catch(error => {
                 console.error('Error updating button states:', error);
@@ -881,6 +1016,7 @@ const JudgeView = {
 
         if (!this.currentStudentId) return setState(true, 'Pick a student first');
         if (this.currentSubmitted) return setState(true, 'This student is submitted — scores are locked');
+        if (this.currentExcluded) return setState(true, 'This student is excluded from scoring');
 
         const validation = this.validateAllScores();
         setState(!validation.isValid, validation.isValid ? '' : 'Fix the highlighted scores first');
@@ -912,6 +1048,11 @@ const JudgeView = {
 
         if (this.currentSubmitted) {
             UI.toast('This student is already submitted — scores are locked.', { type: 'error' });
+            return;
+        }
+
+        if (this.currentExcluded) {
+            UI.toast('This student is excluded from scoring.', { type: 'error' });
             return;
         }
 
@@ -1057,7 +1198,9 @@ const JudgeView = {
             await this.renderClassList();
             const rows = this._classRows || [];
 
-            const unfinished = rows.filter(row => row.status !== 'submitted' && !row.complete);
+            const scorable = rows.filter(row => row.status !== 'excluded');
+            const excludedCount = rows.length - scorable.length;
+            const unfinished = scorable.filter(row => row.status !== 'submitted' && !row.complete);
             if (unfinished.length) {
                 await UI.modal.list({
                     title: 'Not every student is finished',
@@ -1068,7 +1211,7 @@ const JudgeView = {
                 return;
             }
 
-            const todo = rows.filter(row => row.status !== 'submitted');
+            const todo = scorable.filter(row => row.status !== 'submitted');
             if (!todo.length) {
                 UI.toast('Every student in this grade is already submitted.', { type: 'success' });
                 return;
@@ -1076,7 +1219,8 @@ const JudgeView = {
 
             const confirmed = await UI.modal.confirm({
                 title: `Submit ${todo.length === 1 ? 'this student' : `all ${todo.length} students`}?`,
-                message: 'This is final: the scores lock and you cannot change them afterwards.',
+                message: 'This is final: the scores lock and you cannot change them afterwards.'
+                    + (excludedCount ? ` ${excludedCount} excluded ${excludedCount === 1 ? 'student is' : 'students are'} left out of the round.` : ''),
                 confirmLabel: 'Submit final scores',
                 cancelLabel: 'Keep editing',
                 danger: true
@@ -1219,6 +1363,10 @@ const JudgeView = {
             }
 
             // Mark as submitted
+            if (await DataManager.isSubmitted(this.currentStudentId, user.id)) {
+                UI.toast('This student is already submitted — the record is locked.', { type: 'error' });
+                return;
+            }
             await DataManager.submitScores(this.currentStudentId, user.id);
 
             UI.toast('Scores submitted successfully!', { type: 'success' });
@@ -1273,13 +1421,14 @@ const JudgeView = {
                 return;
             }
 
-            const isSubmitted = student => (submissions[student.id] || []).includes(user.id);
-            const allSubmitted = students.every(isSubmitted);
-
             // Submit All is the final act for the grade: every student needs a
             // complete draft first, and once submitted the judge cannot edit.
+            // Excluded students are out of the round, so they leave the count.
             const rows = this._classRows || [];
-            const allComplete = rows.length === students.length && rows.every(row =>
+            const scorable = rows.filter(row => row.status !== 'excluded');
+            const excluded = rows.length - scorable.length;
+            const allSubmitted = scorable.length > 0 && scorable.every(row => row.status === 'submitted');
+            const allComplete = scorable.length > 0 && scorable.every(row =>
                 row.status === 'submitted' || row.complete);
 
             const blocked = allSubmitted || !allComplete;
@@ -1288,7 +1437,7 @@ const JudgeView = {
                 ? 'Every student in this grade is already submitted'
                 : !allComplete
                     ? 'Save a draft for every student first, with a score on every criterion'
-                    : 'Submit every student in this grade — scores lock after this';
+                    : `Submit ${scorable.length} ${scorable.length === 1 ? 'student' : 'students'}${excluded ? ` (${excluded} excluded)` : ''} — scores lock after this`;
         } catch (error) {
             console.error('Error updating Submit All button state:', error);
             setDisabled(submitAllBtn, true);
@@ -1378,6 +1527,11 @@ const JudgeView = {
 
             const user = await AuthManager.getCurrentUser();
             if (!user) return;
+
+            if (await DataManager.isSubmitted(studentId, user.id)) {
+                UI.toast('This student is submitted — the record is locked.', { type: 'error' });
+                return;
+            }
 
             const notes = modalTextarea.value || '';
             await DataManager.setNote(studentId, user.id, notes);

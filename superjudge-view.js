@@ -311,6 +311,11 @@ const SuperJudgeView = {
             };
             
             const { orderedCriteria, groupedCriteria } = organizeCriteria(criteria);
+
+            // An absent student is excluded by their judges, not scored zero.
+            // Their excluders leave the average, and a student every judge
+            // excluded reads as Absent instead of last place on 0.
+            const exclusionIndex = await DataManager.getExclusionsDetailed();
             
             // Hardcoded penultimate criteria (to be displayed in red)
             const penultimateCriteriaNames = new Set([
@@ -322,11 +327,28 @@ const SuperJudgeView = {
             const studentsWithScores = await Promise.all(students.map(async student => {
                 const group = groups.find(g => g.id === student.group_id);
                 const groupJudges = await GroupManager.getJudgesForStudent(student.id);
-                const allSubmitted = await GroupManager.allJudgesSubmittedForStudent(student.id);
+
+                const excludedBy = new Set(((exclusionIndex[student.id] || {}).judges) || []);
+                const reasons = (exclusionIndex[student.id] || {}).reasons || {};
+                const scoringJudges = groupJudges.filter(judge => !excludedBy.has(judge.id));
+                const absent = groupJudges.length > 0 && scoringJudges.length === 0;
+                const allSubmitted = !absent && scoringJudges.length > 0
+                    && (await Promise.all(scoringJudges.map(j => DataManager.isSubmitted(student.id, j.id))))
+                        .every(Boolean);
 
                 // Calculate scores using ordered criteria
                 let totalScore = 0;
                 const judgeScores = await Promise.all(groupJudges.map(async judge => {
+                    if (excludedBy.has(judge.id)) {
+                        return {
+                            judge: judge,
+                            scores: [],
+                            total: null,
+                            submitted: false,
+                            excluded: true,
+                            exclusionReason: reasons[judge.id] || ''
+                        };
+                    }
                     const scoreById = {};
                     const scores = await Promise.all(orderedCriteria.map(async criterion => {
                         const score = await DataManager.getScore(student.id, judge.id, criterion.id);
@@ -351,12 +373,17 @@ const SuperJudgeView = {
                     };
                 }));
 
-                const avgScore = groupJudges.length > 0 ? parseFloat((totalScore / groupJudges.length).toFixed(2)) : 0;
+                const avgScore = scoringJudges.length > 0
+                    ? parseFloat((totalScore / scoringJudges.length).toFixed(2))
+                    : 0;
 
                 return {
                     student: student,
                     group: group,
                     groupJudges: groupJudges,
+                    scoringJudges: scoringJudges,
+                    excludedCount: excludedBy.size,
+                    absent: absent,
                     allSubmitted: allSubmitted,
                     totalScore: totalScore,
                     avgScore: avgScore,
@@ -381,7 +408,8 @@ const SuperJudgeView = {
             // Add position tracking for top 3 students with allSubmitted === true
             let position = 0;
             const studentCards = studentsWithScores.map((studentData, index) => {
-                const { student, group, groupJudges, allSubmitted, totalScore, avgScore, judgeScores } = studentData;
+                const { student, group, groupJudges, scoringJudges, excludedCount, absent,
+                        allSubmitted, totalScore, avgScore, judgeScores } = studentData;
                 
                 // Only assign positions to students with all submitted
                 let placeLabel = '';
@@ -401,8 +429,8 @@ const SuperJudgeView = {
                         <div class="student-score-header">
                             ${placeLabel ? `<div class="place-label-centered">${placeLabel}</div>` : ''}
                             <h3>${student.name}</h3>
-                            <span class="badge ${allSubmitted ? 'badge-success' : 'badge-warning'}">
-                                ${allSubmitted ? 'All Judges Submitted' : 'Pending'}
+                            <span class="badge ${absent ? 'badge-warning' : allSubmitted ? 'badge-success' : 'badge-warning'}">
+                                ${absent ? 'Absent — excluded by every judge' : allSubmitted ? 'All Judges Submitted' : 'Pending'}
                             </span>
                         </div>
                         ${allSubmitted ? `
@@ -414,7 +442,7 @@ const SuperJudgeView = {
                                     <strong>Average Score:</strong> ${avgScore.toFixed(2)}
                                 </div>
                                 <div class="summary-item">
-                                    <strong>Number of Judges:</strong> ${groupJudges.length}
+                                    <strong>Number of Judges:</strong> ${scoringJudges.length}${excludedCount ? ` <span class="badge">${excludedCount} excluded</span>` : ''}
                                 </div>
                             </div>
                             <div class="judge-scores-detail">
@@ -422,8 +450,10 @@ const SuperJudgeView = {
                                     <div class="judge-score-item">
                                         <div class="judge-score-header">
                                             <strong>${js.judge.name}</strong>
-                                            <span class="badge">Total: ${js.total}</span>
-                                            <button class="btn btn-sm btn-primary" onclick="SuperJudgeView.editJudgeScores('${student.id}', '${js.judge.id}')">Edit</button>
+                                            ${js.excluded
+                                                ? `<span class="badge badge-warning" title="${(js.exclusionReason || '').replace(/"/g, '&quot;')}">Excluded${js.exclusionReason ? ` — ${js.exclusionReason}` : ''}</span>`
+                                                : `<span class="badge">Total: ${js.total}</span>
+                                            <button class="btn btn-sm btn-primary" onclick="SuperJudgeView.editJudgeScores('${student.id}', '${js.judge.id}')">Edit</button>`}
                                         </div>
                                         <div class="criterion-scores">
                                             ${js.scores.map(s => {
@@ -446,8 +476,10 @@ const SuperJudgeView = {
                             </div>
                         ` : `
                             <div class="pending-message">
-                                <p>Waiting for all judges to submit scores.</p>
-                                <p>Submitted: ${judgeScores.filter(js => js.submitted).length} / ${groupJudges.length}</p>
+                                ${absent
+                                    ? `<p>Every judge for this grade excluded this student — nothing to score.</p>`
+                                    : `<p>Waiting for all judges to submit scores.</p>
+                                <p>Submitted: ${judgeScores.filter(js => js.submitted).length} / ${scoringJudges.length}</p>`}
                             </div>
                         `}
                     </div>

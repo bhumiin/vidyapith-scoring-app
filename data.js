@@ -493,6 +493,53 @@ const DataManager = {
         this._cache.submissions = submissions;
     },
 
+    /**
+     * { studentId: reason } for the exclusions this judge may see.
+     * Bulk read - the class list needs all of them at once.
+     */
+    async getExclusions() {
+        try {
+            const rows = await SupabaseService.getExclusions();
+            const map = {};
+            rows.forEach(row => { map[row.student_id] = row.reason || ''; });
+            return map;
+        } catch (error) {
+            console.error('Error loading exclusions:', error);
+            return {};
+        }
+    },
+
+    /**
+     * { studentId: { judges: [judgeId], reasons: { judgeId: reason } } }
+     * The super judge screen needs to know *which* judges took a student out,
+     * because an absent student must not drag the average down.
+     */
+    async getExclusionsDetailed() {
+        try {
+            const rows = await SupabaseService.getExclusions();
+            const map = {};
+            rows.forEach(row => {
+                if (!map[row.student_id]) map[row.student_id] = { judges: [], reasons: {} };
+                map[row.student_id].judges.push(row.judge_id);
+                map[row.student_id].reasons[row.judge_id] = row.reason || '';
+            });
+            return map;
+        } catch (error) {
+            console.error('Error loading exclusions:', error);
+            return {};
+        }
+    },
+
+    async setExclusion(studentId, judgeId, reason) {
+        await SupabaseService.setExclusion(studentId, judgeId, reason);
+        await this.refreshCache();
+    },
+
+    async clearExclusion(studentId, judgeId) {
+        await SupabaseService.clearExclusion(studentId, judgeId);
+        await this.refreshCache();
+    },
+
     async submitScores(studentId, judgeId) {
         try {
             await SupabaseService.submitScores(studentId, judgeId);
