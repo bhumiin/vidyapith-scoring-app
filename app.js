@@ -74,6 +74,11 @@ const App = {
         // The view name on <body> lets the restyle convert one screen at a time
         document.body.dataset.view = viewName;
 
+        // the judge panes are sized from whatever sits above them
+        if (viewName === 'judge' && window.JudgeView && JudgeView.updatePaneHeight) {
+            requestAnimationFrame(() => JudgeView.updatePaneHeight());
+        }
+
         // Hide all views
         document.querySelectorAll('.view').forEach(view => {
             view.classList.remove('active');
@@ -104,6 +109,12 @@ const App = {
 
 // Initialize app when DOM is ready
 if (document.readyState === 'loading') {
+    window.addEventListener('resize', () => {
+        if (document.body.dataset.view === 'judge' && window.JudgeView && JudgeView.updatePaneHeight) {
+            JudgeView.updatePaneHeight();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', () => App.init());
 } else {
     App.init();

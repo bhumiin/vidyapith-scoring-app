@@ -283,6 +283,7 @@ const JudgeView = {
             });
 
             this.drawClassList();
+            this.updatePaneHeight();
         } catch (error) {
             console.error('Error loading the class list:', error);
             container.innerHTML = '<p class="class-empty">Could not load the class list.</p>';
@@ -898,6 +899,21 @@ const JudgeView = {
             console.error('Error selecting student:', error);
             UI.toast('Error loading student. Please try again.', { type: 'error' });
         }
+    },
+
+    /**
+     * The header grew (centred logo, name, capsules, topic line), so the panes
+     * cannot assume a fixed 210px of chrome any more. Measure what is actually
+     * above them and hand the panes the remainder of the viewport.
+     */
+    updatePaneHeight() {
+        const header = document.querySelector('#judge-view .view-header');
+        if (!header) return;
+        const bodyStyle = getComputedStyle(document.body);
+        const padding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+        const marginBottom = parseFloat(getComputedStyle(header).marginBottom) || 0;
+        const chrome = header.getBoundingClientRect().height + padding + marginBottom + 8;
+        document.documentElement.style.setProperty('--judge-pane-h', `calc(100dvh - ${Math.round(chrome)}px)`);
     },
 
     rowForCriterion(criterionId) {

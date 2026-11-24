@@ -2741,7 +2741,7 @@ body[data-view="judge"] .class-panel {
     top: var(--space-4);
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 210px);
+    height: var(--judge-pane-h, calc(100dvh - 210px));
     background: var(--color-card);
     border: var(--border-hairline);
     border-radius: var(--radius-xl);
@@ -3003,7 +3003,7 @@ body[data-view="judge"] .judge-main {
 body[data-view="judge"] .scoring-section {
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 210px);
+    max-height: var(--judge-pane-h, calc(100dvh - 210px));
 }
 
 body[data-view="judge"] .stu-head,
@@ -4845,4 +4845,198 @@ body[data-view="login"] #login-error:not(:empty) {
     body[data-view="login"] .login-panel {
         padding: var(--space-5) var(--space-4) var(--space-6);
     }
+}
+
+/* =========================================================================
+   LOGO AND HEADER STACK — 2026-11-24
+   The mark was a 34px thumbnail in a row of metadata. It is now the anchor of
+   every header: centred, larger, with the name (or the admin title) centred
+   beneath it. Logout stays pinned to the corner so the stack can be centred.
+   ========================================================================= */
+
+body[data-view="judge"] .view-header,
+body[data-view="superjudge"] .view-header,
+body[data-view="setup"] .view-header {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 4px;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+body[data-view="judge"] .view-header .logo,
+body[data-view="superjudge"] .view-header .logo,
+body[data-view="setup"] .view-header .logo {
+    order: 0;
+    height: 52px;
+    width: auto;
+    margin: 0 auto;
+    align-self: center;
+}
+
+body[data-view="judge"] .judge-name-display,
+body[data-view="superjudge"] .judge-name-display,
+body[data-view="setup"] .view-header h1 {
+    order: 1;
+    margin: 0;
+    text-align: center;
+}
+
+body[data-view="judge"] .judge-grades-display,
+body[data-view="superjudge"] .judge-grades-display {
+    order: 2;
+    justify-content: center;
+    text-align: center;
+}
+
+body[data-view="judge"] .judge-topics-display,
+body[data-view="superjudge"] .superjudge-topics-display {
+    order: 3;
+    text-align: center;
+    padding-top: var(--space-1);
+}
+
+/* judge + super judge: the whole block is only the hidden h1 and the button */
+body[data-view="judge"] .header-content,
+body[data-view="superjudge"] .header-content {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    width: auto;
+    margin: 0;
+}
+
+/* admin: the title lives inside header-content, so centre the block and pin
+   only the button */
+body[data-view="setup"] .header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: auto;
+    margin: 0;
+}
+
+body[data-view="setup"] #setup-logout {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+}
+
+/* the role reads as its own line under the name, not as a trailing phrase */
+body[data-view="superjudge"] .judge-name-display::after,
+body[data-view="setup"] .view-header h1::after {
+    display: block;
+    margin-top: 2px;
+}
+
+/* ---------- sign-in: the mark centred on the navy panel ---------- */
+body[data-view="login"] .login-brand {
+    position: relative;
+    align-items: center;
+    justify-content: flex-end;      /* the title sits at the foot of the panel */
+    text-align: center;
+    gap: 0;
+}
+
+body[data-view="login"] .login-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+}
+
+body[data-view="login"] .login-logo img {
+    height: 96px;
+    margin: 0 auto;
+}
+
+body[data-view="login"] .login-brand h1 {
+    max-width: none;
+    text-align: center;
+    font-size: var(--text-2xl);
+}
+
+@media (max-width: 760px) {
+    body[data-view="judge"] .view-header .logo,
+    body[data-view="superjudge"] .view-header .logo,
+    body[data-view="setup"] .view-header .logo {
+        height: 54px;
+    }
+
+    body[data-view="login"] .login-logo img {
+        height: 54px;
+    }
+
+    body[data-view="login"] .login-brand {
+        flex-direction: row;
+        justify-content: center;
+        gap: var(--space-3);
+    }
+}
+/* the topic keeps its own full-width line: sharing a row with the capsules
+   squeezed it into three lines */
+body[data-view="judge"] .judge-topics-display {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* the empty scoring pane fills the space it is given */
+body[data-view="judge"] #judge-no-student {
+    display: grid;
+    place-items: center;
+    min-height: var(--judge-pane-h, 420px);
+}
+/* the topic block was a grey box with a 16px heading and padded list items, which
+   made the header 74px taller than its content */
+body[data-view="judge"] .judge-topics-display {
+    background: none;
+    padding: 0;
+}
+
+body[data-view="judge"] .judge-topics-display .topics-display {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1) var(--space-3);
+    max-width: none;
+    padding: 0;
+    background: none;
+    text-align: center;
+}
+
+body[data-view="judge"] .judge-topics-display .topics-title {
+    margin: 0;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--color-faint);
+}
+
+body[data-view="judge"] .judge-topics-display .topics-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+    padding: 0;
+}
+
+body[data-view="judge"] .judge-topics-display .topics-list li {
+    padding: 0;
+    border: 0;
+    font-size: var(--text-sm);
+    color: var(--color-ink);
+}
+
+body[data-view="judge"] .judge-topics-display .topics-list li::before {
+    content: "";
+    margin: 0;
 }
