@@ -396,6 +396,11 @@ const UI = (function () {
     };
 })();
 
+// The app's other modules are plain consts and refer to each other by bare name,
+// which works in classic scripts. Exposing it on window as well means inline
+// handlers, the console and any future module can reach it the same way.
+if (typeof window !== 'undefined') window.UI = UI;
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = UI;
 }
