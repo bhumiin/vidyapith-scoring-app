@@ -209,15 +209,38 @@
                 </div>
             </div>
             <div class="judge-content">
-                <div class="judge-main">
-                    <div class="student-selector-section">
-                        <h2>Select Student</h2>
-                        <select id="judge-student-select" class="student-select">
-                            <option value="">-- Select a student --</option>
-                        </select>
+                <aside class="class-panel">
+                    <div class="class-panel__head">
+                        <div>
+                            <div class="class-panel__title">Class list</div>
+                            <div class="class-panel__count" id="class-count">—</div>
+                        </div>
                     </div>
+                    <input id="class-search" class="class-search" type="search"
+                           placeholder="Find a student…" autocomplete="off">
+                    <div class="class-filters" id="class-filters">
+                        <button type="button" data-filter="all" class="on">All</button>
+                        <button type="button" data-filter="todo">Not started</button>
+                        <button type="button" data-filter="draft">In progress</button>
+                        <button type="button" data-filter="saved">Submitted</button>
+                    </div>
+                    <div id="scored-students-list" class="class-list"></div>
+                    <div class="class-panel__foot">
+                        <div class="class-progress"><i id="class-progress-bar"></i></div>
+                        <div class="class-progress-label" id="class-progress-label">—</div>
+                        <button id="submit-all-scores" class="btn btn-success">Submit All</button>
+                    </div>
+                </aside>
+
+                <div class="judge-main">
                     <div id="judge-scoring-section" class="scoring-section" style="display: none;">
-                        <h2 id="current-student-name"></h2>
+                        <div class="stu-head">
+                            <h2 id="current-student-name"></h2>
+                            <div class="stu-total">
+                                <span class="lab">Total</span>
+                                <span id="judge-total-score">0</span>
+                            </div>
+                        </div>
                         <div id="criteria-scores"></div>
                         <div class="notes-section">
                             <label for="judge-notes-input">Notes</label>
@@ -228,22 +251,15 @@
                                 rows="3"
                             ></textarea>
                         </div>
+                        <div class="scoring-actions">
+                            <button id="next-open" class="btn btn-quiet" type="button" title="Open the next student who is not submitted yet">Next unfinished →</button>
+                            <button id="save-scores" class="btn btn-primary" type="button">Save score</button>
+                        </div>
+                    </div>
+                    <div id="judge-no-student" class="empty-panel">
+                        Pick a student from the class list to start scoring.
                     </div>
                 </div>
-
-                <aside class="judge-rail">
-                    <div class="score-summary">
-                        <div class="total-score">
-                            <strong>Total Score: <span id="judge-total-score">0</span></strong>
-                        </div>
-                        <button id="save-scores" class="btn btn-primary">Save score</button>
-                    </div>
-                    <div id="judge-scored-students" class="scored-students-section">
-                        <h2>Students</h2>
-                        <div id="scored-students-list"></div>
-                        <button id="submit-all-scores" class="btn btn-success">Submit All</button>
-                    </div>
-                </aside>
             </div>
         </div>
 

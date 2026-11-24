@@ -679,6 +679,29 @@ const SupabaseService = {
         }
     },
 
+    /**
+     * Remove one score row. Allowed by RLS for the judge's own row while the
+     * student is not submitted (008_judge_clears_own_scores.sql) and for staff.
+     * Used when a judge clears a chip and moves on, so the cleared value does
+     * not come back.
+     */
+    async deleteScore(studentId, judgeId, criterionId) {
+        try {
+            const { error } = await getSupabaseClient()
+                .from('scores')
+                .delete()
+                .eq('student_id', studentId)
+                .eq('judge_id', judgeId)
+                .eq('criterion_id', criterionId);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error deleting score:', error);
+            throw error;
+        }
+    },
+
     async getAllScores() {
         try {
             const { data, error } = await getSupabaseClient()
