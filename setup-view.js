@@ -120,12 +120,12 @@ const SetupView = {
         const grade = gradeInput.value.trim();
 
         if (!name) {
-            UI.toast('Please enter a student name', { type: 'error' });;
+            UI.toast('Please enter a student name', { type: 'error' });
             return;
         }
 
         if (!grade) {
-            UI.toast('Please enter a grade', { type: 'error' });;
+            UI.toast('Please enter a grade', { type: 'error' });
             return;
         }
 
@@ -154,9 +154,10 @@ const SetupView = {
             // Refresh the students list and grade dropdown
             await this.renderStudents();
             await this.populateGradeList();
+            UI.toast(`${name} added · Grade ${gradeGroup ? gradeGroup.name : grade}`, { type: 'success' });
         } catch (error) {
             console.error('Error adding student manually:', error);
-            UI.toast('Error adding student. Please try again.', { type: 'error' });;
+            UI.toast('Error adding student. Please try again.', { type: 'error' });
         }
     },
 
@@ -185,7 +186,7 @@ const SetupView = {
             await this.renderStudents();
         } catch (error) {
             console.error('Error adding students bulk:', error);
-            UI.toast('Error adding students. Please try again.', { type: 'error' });;
+            UI.toast('Error adding students. Please try again.', { type: 'error' });
         }
     },
 
@@ -251,9 +252,10 @@ const SetupView = {
             try {
                 await DataManager.removeStudent(id);
                 await this.renderStudents();
+                UI.toast('Student removed.', { type: 'success' });
             } catch (error) {
                 console.error('Error removing student:', error);
-                UI.toast('Error removing student. Please try again.', { type: 'error' });;
+                UI.toast('Error removing student. Please try again.', { type: 'error' });
             }
         }
     },
@@ -265,7 +267,7 @@ const SetupView = {
         const password = document.getElementById('judge-password').value.trim();
 
         if (!name || !username || !password) {
-            UI.toast('Please fill in all fields', { type: 'error' });;
+            UI.toast('Please fill in all fields', { type: 'error' });
             return;
         }
 
@@ -277,7 +279,7 @@ const SetupView = {
             await this.renderJudges();
         } catch (error) {
             console.error('Error adding judge:', error);
-            UI.toast('Error adding judge. Please try again.', { type: 'error' });;
+            UI.toast('Error adding judge. Please try again.', { type: 'error' });
         }
     },
 
@@ -308,7 +310,7 @@ const SetupView = {
                 await this.renderJudges();
             } catch (error) {
                 console.error('Error removing judge:', error);
-                UI.toast('Error removing judge. Please try again.', { type: 'error' });;
+                UI.toast('Error removing judge. Please try again.', { type: 'error' });
             }
         }
     },
@@ -342,7 +344,7 @@ const SetupView = {
                     <div class="group-list-item ${isSelected ? 'selected' : ''}" data-judge-id="${judge.id}">
                         <div class="group-list-item-content">
                             <strong>${judge.name}</strong>
-                            <span class="group-student-count">${judge.groupCount} grades</span>
+                            <span class="group-student-count">${judge.groupCount} ${judge.groupCount === 1 ? 'grade' : 'grades'}</span>
                         </div>
                         <button class="btn btn-danger btn-sm delete-judge-btn" onclick="event.stopPropagation(); SetupView.removeJudge('${judge.id}')">Delete</button>
                     </div>
@@ -365,6 +367,13 @@ const SetupView = {
         // Update assign button state
         const assignBtn = document.getElementById('assign-groups-btn');
         assignBtn.disabled = !currentSelectedJudgeId;
+
+        // until a judge is picked the assign column has nothing to act on
+        const assignPanel = document.querySelector('#judges-tab .student-selector-column');
+        if (assignPanel) {
+            assignPanel.classList.toggle('is-idle', !currentSelectedJudgeId);
+            assignPanel.title = currentSelectedJudgeId ? '' : 'Pick a judge on the left first';
+        }
     },
 
     async renderGroupCheckboxes(selectedJudgeId, searchTerm) {
@@ -406,7 +415,7 @@ const SetupView = {
                                ${isChecked ? 'checked' : ''}
                                ${!selectedJudgeId ? 'disabled' : ''}>
                         <span class="student-name">${group.name}</span>
-                        <span class="badge badge-info">${studentCounts[group.id] || 0} students</span>
+                        <span class="badge badge-info">${studentCounts[group.id] || 0} ${(studentCounts[group.id] || 0) === 1 ? 'student' : 'students'}</span>
                     </label>
                 </div>
             `;
@@ -477,6 +486,14 @@ const SetupView = {
         // Update assign button state
         const assignBtn = document.getElementById('assign-groups-btn');
         assignBtn.disabled = !judgeId;
+
+        // without a judge the whole column is inert - say so instead of
+        // leaving controls that appear to do something
+        const assignPanel = document.querySelector('#judges-tab .student-selector-column');
+        if (assignPanel) {
+            assignPanel.classList.toggle('is-idle', !judgeId);
+            assignPanel.title = judgeId ? '' : 'Pick a judge on the left first';
+        }
         
         // Update judges list to show selected state
         const judges = await DataManager.getJudges() || [];
@@ -499,7 +516,7 @@ const SetupView = {
                     <div class="group-list-item ${isSelected ? 'selected' : ''}" data-judge-id="${judge.id}">
                         <div class="group-list-item-content">
                             <strong>${judge.name}</strong>
-                            <span class="group-student-count">${judge.groupCount} grades</span>
+                            <span class="group-student-count">${judge.groupCount} ${judge.groupCount === 1 ? 'grade' : 'grades'}</span>
                         </div>
                         <button class="btn btn-danger btn-sm delete-judge-btn" onclick="event.stopPropagation(); SetupView.removeJudge('${judge.id}')">Delete</button>
                     </div>
@@ -514,13 +531,13 @@ const SetupView = {
 
     async assignSelectedGroupsToJudge(judgeId) {
         if (!judgeId) {
-            UI.toast('Please select a judge first', { type: 'error' });;
+            UI.toast('Please select a judge first', { type: 'error' });
             return;
         }
         
         const checkboxes = document.querySelectorAll('.group-checkbox:checked');
         if (checkboxes.length === 0) {
-            UI.toast('Please select at least one grade', { type: 'error' });;
+            UI.toast('Please select at least one grade', { type: 'error' });
             return;
         }
         
@@ -558,7 +575,7 @@ const SetupView = {
         const password = document.getElementById('superjudge-password').value.trim();
 
         if (!name || !username || !password) {
-            UI.toast('Please fill in all fields', { type: 'error' });;
+            UI.toast('Please fill in all fields', { type: 'error' });
             return;
         }
 
@@ -607,7 +624,7 @@ const SetupView = {
     async addCriterion() {
         const name = document.getElementById('criterion-name').value.trim();
         if (!name) {
-            UI.toast('Please enter a criterion name', { type: 'error' });;
+            UI.toast('Please enter a criterion name', { type: 'error' });
             return;
         }
 
@@ -656,12 +673,12 @@ const SetupView = {
         const groupId = document.getElementById('topic-grade-select').value;
 
         if (!name) {
-            UI.toast('Please enter a topic name', { type: 'error' });;
+            UI.toast('Please enter a topic name', { type: 'error' });
             return;
         }
 
         if (!groupId) {
-            UI.toast('Please select a grade', { type: 'error' });;
+            UI.toast('Please select a grade', { type: 'error' });
             return;
         }
 
@@ -677,7 +694,7 @@ const SetupView = {
             }
         } catch (error) {
             console.error('Error adding topic:', error);
-            UI.toast('Error adding topic. Please try again.', { type: 'error' });;
+            UI.toast('Error adding topic. Please try again.', { type: 'error' });
         }
     },
 
@@ -738,7 +755,7 @@ const SetupView = {
                     <div class="group-list-item ${isSelected ? 'selected' : ''}" data-group-id="${group.id}">
                         <div class="group-list-item-content">
                             <strong>${group.name}</strong>
-                            <span class="group-student-count">${group.topicCount} topics</span>
+                            <span class="group-student-count">${group.topicCount} ${group.topicCount === 1 ? 'topic' : 'topics'}</span>
                         </div>
                     </div>
                 `;
@@ -846,7 +863,7 @@ const SetupView = {
                     <div class="group-list-item ${isSelected ? 'selected' : ''}" data-group-id="${group.id}">
                         <div class="group-list-item-content">
                             <strong>${group.name}</strong>
-                            <span class="group-student-count">${group.topicCount} topics</span>
+                            <span class="group-student-count">${group.topicCount} ${group.topicCount === 1 ? 'topic' : 'topics'}</span>
                         </div>
                     </div>
                 `;
@@ -873,7 +890,7 @@ const SetupView = {
                 }
             } catch (error) {
                 console.error('Error removing topic:', error);
-                UI.toast('Error removing topic. Please try again.', { type: 'error' });;
+                UI.toast('Error removing topic. Please try again.', { type: 'error' });
             }
         }
     },
@@ -1038,13 +1055,13 @@ const SetupView = {
 
     async assignSelectedJudgesToGroup(groupId) {
         if (!groupId) {
-            UI.toast('Please select a grade first', { type: 'error' });;
+            UI.toast('Please select a grade first', { type: 'error' });
             return;
         }
         
         const checkboxes = document.querySelectorAll('.judge-checkbox:checked');
         if (checkboxes.length === 0) {
-            UI.toast('Please select at least one judge', { type: 'error' });;
+            UI.toast('Please select at least one judge', { type: 'error' });
             return;
         }
         
@@ -1092,7 +1109,7 @@ const SetupView = {
         const select = document.getElementById(`student-select-${groupId}`);
         const studentId = select.value;
         if (!studentId) {
-            UI.toast('Please select a student', { type: 'error' });;
+            UI.toast('Please select a student', { type: 'error' });
             return;
         }
 
@@ -1155,7 +1172,7 @@ const SetupView = {
         const fileInput = document.getElementById('import-file');
         const file = fileInput.files[0];
         if (!file) {
-            UI.toast('Please select a file', { type: 'error' });;
+            UI.toast('Please select a file', { type: 'error' });
             return;
         }
 
@@ -1163,10 +1180,10 @@ const SetupView = {
         reader.onload = (e) => {
             const success = DataManager.importConfig(e.target.result);
             if (success) {
-                UI.toast('Configuration imported successfully!', { type: 'success' });;
+                UI.toast('Configuration imported successfully!', { type: 'success' });
                 this.render();
             } else {
-                UI.toast('Error importing configuration. Please check the file format.', { type: 'error' });;
+                UI.toast('Error importing configuration. Please check the file format.', { type: 'error' });
             }
         };
         reader.readAsText(file);
@@ -1238,7 +1255,10 @@ const SetupView = {
                 const headers = jsonData[headerRowIndex].map(h => h ? h.toString().trim() : '');
                 
                 // Find column indices
-                const studentNameColIndex = this.findColumnIndex(headers, 'Students Name');
+                // both spellings appear in the wild; the copy says "Student Name"
+                const studentNameColIndex = this.findColumnIndex(headers, 'Students Name') !== -1
+                    ? this.findColumnIndex(headers, 'Students Name')
+                    : this.findColumnIndex(headers, 'Student Name');
                 const gradeColIndex = this.findColumnIndex(headers, 'Grade');
 
                 if (studentNameColIndex === -1) {

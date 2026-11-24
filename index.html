@@ -135,7 +135,7 @@
                 <div class="form-section">
                     <h3>Add Topic</h3>
                     <input type="text" id="topic-name-input" placeholder="Topic Name">
-                    <input type="number" id="topic-time-limit-input" placeholder="Time Limit (in Minutes)" min="0" step="1">
+                    <input type="number" id="topic-time-limit-input" placeholder="Minutes" min="0" step="1">
                     <select id="topic-grade-select">
                         <option value="">Select a grade</option>
                     </select>
@@ -172,14 +172,14 @@
                 <h2>Import/Export Configuration</h2>
                 <div class="form-section">
                     <h3>Import Students from Spreadsheet</h3>
-                    <p>Upload an Excel file (.xlsx) with columns: "Students Name" and "Grade". Each grade will be created as a group, and students will be assigned to their respective grade groups.</p>
+                    <p>Upload an Excel file (.xlsx) with columns "Student Name" and "Grade". Each grade becomes a group and its students are placed in it.</p>
                     <input type="file" id="import-spreadsheet-file" accept=".xlsx">
                     <button id="import-spreadsheet" class="btn btn-primary">Import Students from Excel</button>
                     <div id="import-spreadsheet-status" class="import-status" style="margin-top: 10px; display: none;"></div>
                 </div>
                 <div class="form-section">
                     <h3>Import Judges from Spreadsheet</h3>
-                    <p>Upload an Excel file (.xlsx) with columns: "Judge Name", "username", "password", and "Assigned group". Judges will be created or updated, and assigned to grades. If a judge with the same username exists, it will be updated.</p>
+                    <p>Upload an Excel file (.xlsx) with columns "Judge Name", "username", "password" and "Assigned group". Judges are created or updated and assigned to that grade; an existing username is updated rather than duplicated.</p>
                     <input type="file" id="import-judges-file" accept=".xlsx">
                     <button id="import-judges" class="btn btn-primary">Import Judges from Excel</button>
                     <div id="import-judges-status" class="import-status" style="margin-top: 10px; display: none;"></div>
