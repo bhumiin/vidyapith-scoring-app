@@ -4719,7 +4719,7 @@ body[data-view="login"] .login-logo img {
 
 body[data-view="login"] .login-brand h1 {
     margin: 0;
-    max-width: 9ch;                 /* wraps to two lines on its own, one on phones */
+    max-width: 14ch;                /* two or three lines on its own, one on phones */
     text-wrap: balance;
     font-size: var(--text-3xl);
     font-weight: var(--weight-semibold);
