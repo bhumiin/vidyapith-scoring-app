@@ -327,18 +327,20 @@ const SuperJudgeView = {
                 // Calculate scores using ordered criteria
                 let totalScore = 0;
                 const judgeScores = await Promise.all(groupJudges.map(async judge => {
-                    let judgeTotal = 0;
+                    const scoreById = {};
                     const scores = await Promise.all(orderedCriteria.map(async criterion => {
                         const score = await DataManager.getScore(student.id, judge.id, criterion.id);
-                        if (score !== null) {
-                            judgeTotal += score;
-                        }
+                        scoreById[criterion.id] = score;
                         return {
                             criterion: criterion.name,
                             criterionId: criterion.id,
                             score: score
                         };
                     }));
+                    // Same rule as the judge's own screen: penalty criteria are
+                    // deducted, and a blank penalty costs nothing.
+                    const judgeTotal = DataManager.totalForJudge(
+                        orderedCriteria, criterion => scoreById[criterion.id]);
                     totalScore += judgeTotal;
                     const submitted = await DataManager.isSubmitted(student.id, judge.id);
                     return {

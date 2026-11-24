@@ -231,6 +231,47 @@ const DataManager = {
     },
 
     /**
+     * A criterion is a penalty criterion when its group is flagged is_penalty in
+     * the database. Nothing else decides this — no name matching, no hardcoded
+     * lists. Keep it that way: one definition, used by every total in the app.
+     */
+    isPenaltyCriterion(criterion) {
+        return criterion && criterion.group && criterion.group.is_penalty === true;
+    },
+
+    /**
+     * Deduction for one penalty criterion. blank, null and 0 all mean "no
+     * deduction", so a judge who leaves the field empty costs the student nothing.
+     */
+    penaltyDeduction(value) {
+        if (value === null || value === undefined || value === '') return 0;
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return n;
+    },
+
+    /**
+     * The single total used everywhere: scoring criteria add, penalty criteria
+     * subtract, blank penalties are 0.
+     * @param {Array} criteria - criteria from getCriteria(), each with .group
+     * @param {Function} getScore - (criterion) => raw score or null
+     * @returns {number}
+     */
+    totalForJudge(criteria, getScore) {
+        let total = 0;
+        for (const criterion of (criteria || [])) {
+            const value = getScore(criterion);
+            if (this.isPenaltyCriterion(criterion)) {
+                total -= this.penaltyDeduction(value);
+            } else {
+                const n = Number(value);
+                if (Number.isFinite(n)) total += n;
+            }
+        }
+        return total;
+    },
+
+    /**
      * Get criteria organized by group
      * @returns {Array} Array of group objects with criteria, ordered by group name
      */
@@ -617,17 +658,17 @@ const DataManager = {
                 let judgeCount = 0;
 
                 groupJudges.forEach(judge => {
-                    let judgeTotal = 0;
+                    const byId = {};
                     let hasScores = false;
                     criteria.forEach(criterion => {
                         const score = scores[student.id]?.[judge.id]?.[criterion.id];
+                        byId[criterion.id] = score;
                         if (score !== null && score !== undefined) {
-                            judgeTotal += score;
                             hasScores = true;
                         }
                     });
                     if (hasScores) {
-                        totalScore += judgeTotal;
+                        totalScore += DataManager.totalForJudge(criteria, c => byId[c.id]);
                         judgeCount++;
                     }
                 });

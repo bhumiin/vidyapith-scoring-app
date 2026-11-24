@@ -378,107 +378,34 @@ const JudgeView = {
             // Get all criteria
             const allCriteria = await DataManager.getCriteria();
             
-            // Define criteria groups programmatically (mapping criteria names to group headers)
-            // Using flexible matching to handle name variations
-            const criteriaGroupMapping = {
-                'Content': {
-                    criteriaNames: ['Ideas Examples', 'Ideas Example', 'Values based examples', 'Relate to topic and reflect'],
-                    isPenalty: false,
-                    // Keywords for flexible matching
-                    keywords: ['ideas', 'values', 'relate to topic']
-                },
-                'Language': {
-                    criteriaNames: ['Creativity Language'],
-                    isPenalty: false,
-                    keywords: ['creativity language', 'language']
-                },
-                'Presentation': {
-                    criteriaNames: ['Confidence Style Effectiveness'],
-                    isPenalty: false,
-                    keywords: ['confidence', 'style', 'effectiveness', 'presentation']
-                },
-                'Preparation': {
-                    criteriaNames: ['Reading Sentences', 'Overtime (contd. after 2nd bell)'],
-                    isPenalty: true,
-                    keywords: ['reading', 'sentences', 'overtime', 'preparation']
-                }
-            };
-            
-            // Define order for groups
-            const groupOrder = ['Content', 'Language', 'Presentation', 'Preparation'];
-            
-            // Organize criteria into groups
+            // Group the criteria using their database group (criterion_groups).
+            // The database is the only definition of a group, and of whether that
+            // group is a penalty — no name matching, no hardcoded lists.
             const groupedCriteria = {};
-            groupOrder.forEach(groupName => {
-                groupedCriteria[groupName] = {
-                    header: groupName,
-                    criteria: [],
-                    isPenalty: criteriaGroupMapping[groupName].isPenalty
-                };
-            });
-            
-            // Add ungrouped criteria container
-            groupedCriteria['Ungrouped'] = {
-                header: 'Ungrouped',
-                criteria: [],
-                isPenalty: false
-            };
-            
-            // Assign criteria to groups based on name matching (flexible matching)
+            const groupOrder = [];
             allCriteria.forEach(criterion => {
-                let assigned = false;
-                const criterionNameLower = criterion.name.toLowerCase();
-                
-                for (const groupName in criteriaGroupMapping) {
-                    const groupMapping = criteriaGroupMapping[groupName];
-                    
-                    // Check exact name matches first
-                    const exactMatch = groupMapping.criteriaNames.some(name => 
-                        criterionNameLower === name.toLowerCase() ||
-                        criterionNameLower.includes(name.toLowerCase()) || 
-                        name.toLowerCase().includes(criterionNameLower)
-                    );
-                    
-                    // Check keyword matches if exact match fails
-                    const keywordMatch = groupMapping.keywords && groupMapping.keywords.some(keyword => 
-                        criterionNameLower.includes(keyword.toLowerCase())
-                    );
-                    
-                    if (exactMatch || keywordMatch) {
-                        groupedCriteria[groupName].criteria.push(criterion);
-                        assigned = true;
-                        break;
-                    }
+                const groupName = (criterion.group && criterion.group.name) || 'Ungrouped';
+                if (!groupedCriteria[groupName]) {
+                    groupedCriteria[groupName] = {
+                        header: groupName,
+                        criteria: [],
+                        isPenalty: criterion.group ? criterion.group.is_penalty === true : false
+                    };
+                    groupOrder.push(groupName);
                 }
-                if (!assigned) {
-                    groupedCriteria['Ungrouped'].criteria.push(criterion);
-                }
+                groupedCriteria[groupName].criteria.push(criterion);
             });
-            
-            // Sort criteria within each group according to predefined order
-            groupOrder.forEach(groupName => {
-                if (groupedCriteria[groupName] && criteriaGroupMapping[groupName]) {
-                    const order = criteriaGroupMapping[groupName].criteriaNames;
-                    groupedCriteria[groupName].criteria.sort((a, b) => {
-                        const aIndex = order.findIndex(name => 
-                            a.name.toLowerCase().includes(name.toLowerCase()) || 
-                            name.toLowerCase().includes(a.name.toLowerCase())
-                        );
-                        const bIndex = order.findIndex(name => 
-                            b.name.toLowerCase().includes(name.toLowerCase()) || 
-                            name.toLowerCase().includes(b.name.toLowerCase())
-                        );
-                        
-                        if (aIndex !== -1 && bIndex !== -1) {
-                            return aIndex - bIndex;
-                        }
-                        if (aIndex !== -1) return -1;
-                        if (bIndex !== -1) return 1;
-                        return a.name.localeCompare(b.name);
-                    });
-                }
-            });
-            
+
+            // Ungrouped always renders last; otherwise keep the database's order
+            const ungroupedIndex = groupOrder.indexOf('Ungrouped');
+            if (ungroupedIndex !== -1) {
+                groupOrder.splice(ungroupedIndex, 1);
+                groupOrder.push('Ungrouped');
+            }
+
+            // Remember the criteria so the running total uses the same objects
+            this.currentCriteria = allCriteria;
+
             // Define score ranges for each criterion by name
             const getScoreRange = (criterionName) => {
                 const nameLower = criterionName.toLowerCase();
@@ -550,9 +477,13 @@ const JudgeView = {
                         }
                     }
                     
+                    const rangeLabel = isPenalty
+                        ? `${criterion.name} (${minScore}-${maxScore}, deducted — leave blank for none):`
+                        : `${criterion.name} (${minScore}-${maxScore}):`;
+
                     return `
                         <div class="criterion-item">
-                            <label>${criterion.name} (${minScore}-${maxScore}):</label>
+                            <label>${rangeLabel}</label>
                             <input 
                                 type="number" 
                                 min="${minScore}" 
@@ -573,7 +504,7 @@ const JudgeView = {
                 
                 // Add penalty indicator text for Preparation group
                 const penaltyIndicator = isPenalty ? 
-                    '<p class="penalty-indicator">Note: Scores in this group are deducted from the total</p>' : '';
+                    '<p class="penalty-indicator">Note: Scores in this group are deducted from the total. Leave both fields blank when there is nothing to deduct.</p>' : '';
                 
                 return `
                     <div class="criterion-group ${penaltyClass}">
@@ -586,87 +517,37 @@ const JudgeView = {
                 `;
             };
             
-            // Render criteria inputs grouped by criteria headers
+            // Render the groups the database defines, keeping the familiar layout:
+            // Content full width, Language and Presentation side by side, Preparation
+            // full width, then any other group, then ungrouped criteria last.
             const container = document.getElementById('criteria-scores');
-            let htmlOutput = '';
-            
-            // Render Content group (full width)
-            if (groupedCriteria['Content'] && groupedCriteria['Content'].criteria.length > 0) {
-                htmlOutput += renderGroup(groupedCriteria['Content']);
-            }
-            
-            // Render Language and Presentation groups side by side
-            const languageGroup = groupedCriteria['Language'];
-            const presentationGroup = groupedCriteria['Presentation'];
-            const hasLanguage = languageGroup && languageGroup.criteria.length > 0;
-            const hasPresentation = presentationGroup && presentationGroup.criteria.length > 0;
-            
-            if (hasLanguage || hasPresentation) {
-                htmlOutput += '<div class="criterion-groups-row">';
-                if (hasLanguage) {
-                    htmlOutput += renderGroup(languageGroup);
+            const rendered = new Set();
+            const renderIfPresent = (name) => {
+                const groupData = groupedCriteria[name];
+                if (!groupData || groupData.criteria.length === 0 || rendered.has(name)) {
+                    return '';
                 }
-                if (hasPresentation) {
-                    htmlOutput += renderGroup(presentationGroup);
-                }
-                htmlOutput += '</div>';
-            }
-            
-            // Render Preparation group (full width)
-            if (groupedCriteria['Preparation'] && groupedCriteria['Preparation'].criteria.length > 0) {
-                htmlOutput += renderGroup(groupedCriteria['Preparation']);
-            }
-            
-            container.innerHTML = htmlOutput + 
-            // Add ungrouped criteria if any
-            (groupedCriteria['Ungrouped'].criteria.length > 0 ? `
-                <div class="criterion-group">
-                    <h3 class="criterion-group-title">${groupedCriteria['Ungrouped'].header}</h3>
-                    <div class="criterion-group-items criterion-group-items-horizontal">
-                        ${groupedCriteria['Ungrouped'].criteria.map(criterion => {
-                            const score = this.currentScores[criterion.id] || '';
-                            
-                            // Get score range: prefer database values, fallback to name-based mapping
-                            let minScore, maxScore;
-                            if (criterion.min_score != null && criterion.max_score != null) {
-                                minScore = criterion.min_score;
-                                maxScore = criterion.max_score;
-                            } else {
-                                const range = getScoreRange(criterion.name);
-                                if (range) {
-                                    minScore = range.min;
-                                    maxScore = range.max;
-                                } else {
-                                    console.warn(`No score range found for criterion: ${criterion.name}`);
-                                    minScore = criterion.min_score ?? 1;
-                                    maxScore = criterion.max_score ?? 10;
-                                }
-                            }
-                            
-                            return `
-                                <div class="criterion-item">
-                                    <label>${criterion.name} (${minScore}-${maxScore}):</label>
-                                    <input 
-                                        type="number" 
-                                        min="${minScore}" 
-                                        max="${maxScore}" 
-                                        step="1"
-                                        value="${score}" 
-                                        data-criterion-id="${criterion.id}"
-                                    data-min-score="${minScore}"
-                                    data-max-score="${maxScore}"
-                                    data-is-penalty="false"
-                                    class="score-input"
-                                        onchange="JudgeView.updateScore('${criterion.id}', this.value)"
-                                        oninput="JudgeView.updateScore('${criterion.id}', this.value)"
-                                    >
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            ` : '');
+                rendered.add(name);
+                return renderGroup(groupData);
+            };
 
+            let htmlOutput = renderIfPresent('Content');
+
+            const languageHtml = renderIfPresent('Language');
+            const presentationHtml = renderIfPresent('Presentation');
+            if (languageHtml && presentationHtml) {
+                htmlOutput += '<div class="criterion-groups-row">' + languageHtml + presentationHtml + '</div>';
+            } else {
+                htmlOutput += languageHtml + presentationHtml;
+            }
+
+            htmlOutput += renderIfPresent('Preparation');
+
+            groupOrder.forEach(name => {
+                htmlOutput += renderIfPresent(name);
+            });
+
+            container.innerHTML = htmlOutput;
             this.calculateTotal();
             this.updateButtonStates().catch(error => {
                 console.error('Error updating button states:', error);
@@ -819,25 +700,13 @@ const JudgeView = {
     },
 
     calculateTotal() {
-        let total = 0;
-        
-        // Calculate total: add regular scores, subtract penalty scores
-        for (const criterionId in this.currentScores) {
-            const score = this.currentScores[criterionId];
-            if (score !== null && score !== undefined && score !== '') {
-                const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
-                const isPenalty = inputElement ? inputElement.dataset.isPenalty === 'true' : false;
-                
-                if (isPenalty) {
-                    // Subtract penalty scores
-                    total -= (score || 0);
-                } else {
-                    // Add regular scores
-                    total += (score || 0);
-                }
-            }
-        }
-        
+        // One rule, one place: DataManager.totalForJudge subtracts penalty
+        // criteria and treats an empty penalty as zero deduction.
+        const total = DataManager.totalForJudge(
+            this.currentCriteria || [],
+            criterion => this.currentScores[criterion.id]
+        );
+
         document.getElementById('judge-total-score').textContent = total;
     },
 
@@ -874,9 +743,7 @@ const JudgeView = {
             // Validate all required criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
             const missingScores = criteria.filter(c => {
                 const score = this.currentScores[c.id];
-                const criterionNameLower = c.name.toLowerCase();
-                const isOptional = criterionNameLower.includes('reading sentences') || 
-                                   criterionNameLower.includes('overtime');
+                const isOptional = DataManager.isPenaltyCriterion(c);
                 
                 // Skip optional criteria from missing scores check
                 if (isOptional) {
@@ -1001,9 +868,7 @@ const JudgeView = {
                 // Check for missing required criteria scores
                 for (const criterion of criteria) {
                     const score = await DataManager.getScore(student.id, user.id, criterion.id);
-                    const criterionNameLower = criterion.name.toLowerCase();
-                    const isOptional = criterionNameLower.includes('reading sentences') || 
-                                       criterionNameLower.includes('overtime');
+                    const isOptional = DataManager.isPenaltyCriterion(criterion);
                     
                     // Skip optional criteria
                     if (isOptional) {
@@ -1101,9 +966,7 @@ const JudgeView = {
             // Validate all criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
             const missingScores = criteria.filter(c => {
                 const score = this.currentScores[c.id];
-                const criterionNameLower = c.name.toLowerCase();
-                const isOptional = criterionNameLower.includes('reading sentences') || 
-                                   criterionNameLower.includes('overtime');
+                const isOptional = DataManager.isPenaltyCriterion(c);
                 
                 // Skip optional criteria from missing scores check
                 if (isOptional) {
@@ -1190,15 +1053,9 @@ const JudgeView = {
      * @returns {boolean} - True if penalty, false otherwise
      */
     isPenaltyCriterion(criterion) {
-        // Check if criterion has group info with is_penalty flag
-        if (criterion.group?.is_penalty === true) {
-            return true;
-        }
-        
-        // Check by criterion name (Preparation group criteria)
-        const criterionNameLower = criterion.name.toLowerCase();
-        const penaltyCriteriaNames = ['reading sentences', 'overtime', 'preparation'];
-        return penaltyCriteriaNames.some(name => criterionNameLower.includes(name));
+        // Kept for existing call sites; the definition lives in DataManager and
+        // comes from criterion_groups.is_penalty in the database.
+        return DataManager.isPenaltyCriterion(criterion);
     },
 
     async renderScoredStudents() {
@@ -1263,23 +1120,11 @@ const JudgeView = {
 
             const cards = await Promise.all(scoredStudents.map(async student => {
                 const submitted = await DataManager.isSubmitted(student.id, user.id);
-                let total = 0;
-                
+                const scoreById = {};
                 for (const criterion of criteria) {
-                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
-                    if (score !== null) {
-                        // Check if this is a penalty criterion (Preparation group)
-                        const isPenalty = this.isPenaltyCriterion(criterion);
-                        
-                        if (isPenalty) {
-                            // Subtract penalty scores
-                            total -= score;
-                        } else {
-                            // Add regular scores
-                            total += score;
-                        }
-                    }
+                    scoreById[criterion.id] = await DataManager.getScore(student.id, user.id, criterion.id);
                 }
+                const total = DataManager.totalForJudge(criteria, c => scoreById[c.id]);
 
                 const viewNotesButton = `<button class="btn btn-sm btn-primary" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')" style="margin-top: 10px;">View Notes</button>`;
 
