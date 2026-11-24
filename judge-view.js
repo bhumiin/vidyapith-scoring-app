@@ -482,35 +482,42 @@ const JudgeView = {
                     
                     // The deduction group says "leave blank for none" once, above the
                     // rows; repeating it per field made every row unreadable.
+                    // the range is its own span so it never breaks across lines
                     const rangeLabel = isPenalty
-                        ? `${criterion.name}:`
-                        : `${criterion.name} (${minScore}-${maxScore}):`;
+                        ? `${criterion.name}`
+                        : `${criterion.name} <span class="criterion-range">(${minScore}–${maxScore})</span>`;
+
+                    // One tap per score, no keyboard: a row of chips, each its own
+                    // value. Penalty criteria get a "None" chip so "nothing to deduct"
+                    // is a choice rather than an empty box.
+                    const chips = [];
+                    if (isPenalty) {
+                        chips.push(`<button type="button" class="score-chip score-chip--none"
+                            data-value="none" aria-pressed="false"
+                            onclick="JudgeView.setScore('${criterion.id}', null)">None</button>`);
+                    }
+                    // penalty rows start at 1: the "None" chip already means zero
+                    const firstChip = isPenalty ? Math.max(minScore, 1) : minScore;
+                    for (let value = firstChip; value <= maxScore; value++) {
+                        chips.push(`<button type="button" class="score-chip"
+                            data-value="${value}" aria-pressed="false"
+                            onclick="JudgeView.setScore('${criterion.id}', ${value})">${value}</button>`);
+                    }
 
                     return `
-                        <div class="criterion-item">
+                        <div class="criterion-item" data-criterion-row="${criterion.id}">
                             <label>${rangeLabel}</label>
-                            <input 
-                                type="number" 
-                                min="${minScore}" 
-                                max="${maxScore}" 
-                                step="1"
-                                value="${score}" 
-                                data-criterion-id="${criterion.id}"
-                                data-min-score="${minScore}"
-                                data-max-score="${maxScore}"
-                                data-is-penalty="${isPenalty}"
-                                class="score-input"
-                                placeholder="${isPenalty ? '–' : ''}"
-                                onchange="JudgeView.updateScore('${criterion.id}', this.value)"
-                                oninput="JudgeView.updateScore('${criterion.id}', this.value)"
-                            >
+                            <div class="score-chips" style="--chips:${chips.length}" role="group"
+                                 aria-label="${criterion.name}, ${minScore} to ${maxScore}${isPenalty ? ', deducted' : ''}">
+                                ${chips.join('')}
+                            </div>
                         </div>
                     `;
                 }).join('');
                 
                 // Add penalty indicator text for Preparation group
                 const penaltyIndicator = isPenalty ? 
-                    '<p class="penalty-indicator">Note: Scores in this group are deducted from the total. Leave both fields blank when there is nothing to deduct.</p>' : '';
+                    '<p class="penalty-indicator">Deducts from the total. Leave it on None when there is nothing to deduct.</p>' : '';
                 
                 return `
                     <div class="criterion-group ${penaltyClass}">
@@ -554,6 +561,7 @@ const JudgeView = {
             });
 
             container.innerHTML = htmlOutput;
+            this.paintScoreChips();
             this.calculateTotal();
             this.updateButtonStates().catch(error => {
                 console.error('Error updating button states:', error);
@@ -564,68 +572,71 @@ const JudgeView = {
         }
     },
 
-    updateScore(criterionId, value) {
+    rowForCriterion(criterionId) {
+        return document.querySelector(`.criterion-item[data-criterion-row="${criterionId}"]`);
+    },
+
+    labelForCriterion(criterionId) {
+        const row = this.rowForCriterion(criterionId);
+        const label = row && row.querySelector('label');
+        return label ? label.textContent.replace(/:\s*$/, '') : 'Unknown';
+    },
+
+    /**
+     * Set one criterion, from a chip. Tapping the value that is already chosen
+     * clears it, so a mistake is one tap to undo and there is nothing to retype.
+     * @param {string} criterionId
+     * @param {number|null} value  null clears (and is the only choice on a penalty)
+     */
+    setScore(criterionId, value) {
         if (!this.currentStudentId) return;
 
-        const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
-        
-        // Get criterion-specific min/max from input element data attributes
-        // These should always be set correctly from the render function
-        const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
-        const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
-        
-        // If min/max not found, this is an error - should not happen
-        if (minScore === null || maxScore === null || isNaN(minScore) || isNaN(maxScore)) {
-            console.error(`Score range not found for criterion ${criterionId}`);
-            UI.toast('Error: Score range not configured for this criterion. Please refresh the page.', { type: 'error' });;
-            return;
-        }
-        
-        // If value is empty, clear the score
-        if (value === '' || value === null || value === undefined) {
-            this.currentScores[criterionId] = null;
-            if (inputElement) {
-                inputElement.value = '';
-                inputElement.classList.remove('invalid-score');
-                inputElement.classList.remove('missing-score');
-            }
-            this.calculateTotal();
-            this.updateButtonStates().catch(error => {
-                console.error('Error updating button states:', error);
-            });
+        const criterion = (this.currentCriteria || []).find(c => c.id === criterionId);
+        if (!criterion) {
+            console.error(`Unknown criterion ${criterionId}`);
             return;
         }
 
-        const score = parseInt(value);
-        
-        // Validate score range based on criterion-specific min/max
-        if (isNaN(score) || score < minScore || score > maxScore) {
-            // Clear invalid score from storage
-            this.currentScores[criterionId] = null;
-            
-            // Clear and focus the input field
-            if (inputElement) {
-                inputElement.value = '';
-                inputElement.classList.add('invalid-score');
-                inputElement.focus();
-                UI.toast(`Score must be between ${minScore} and ${maxScore}. Please enter a valid score.`, { type: 'error' });;
-            }
-            this.calculateTotal();
-            this.updateButtonStates().catch(error => {
-                console.error('Error updating button states:', error);
-            });
+        const minScore = criterion.min_score != null ? criterion.min_score : 1;
+        const maxScore = criterion.max_score != null ? criterion.max_score : 10;
+
+        let next = value === null || value === undefined || value === '' ? null : Number(value);
+        if (next !== null && (isNaN(next) || next < minScore || next > maxScore)) {
+            UI.toast(`Score must be between ${minScore} and ${maxScore}.`, { type: 'error' });
             return;
         }
 
-        // Valid score - store it and remove invalid/missing classes
-        this.currentScores[criterionId] = score;
-        if (inputElement) {
-            inputElement.classList.remove('invalid-score');
-            inputElement.classList.remove('missing-score');
-        }
+        const current = this.currentScores[criterionId];
+        const currentNumber = current === '' || current === null || current === undefined ? null : Number(current);
+
+        // tapping the chosen number again clears it
+        if (next !== null && currentNumber === next) next = null;
+
+        this.currentScores[criterionId] = next;
+        this.paintScoreChips();
         this.calculateTotal();
         this.updateButtonStates().catch(error => {
             console.error('Error updating button states:', error);
+        });
+    },
+
+    // kept for anything still calling the old name
+    updateScore(criterionId, value) {
+        this.setScore(criterionId, value === '' ? null : value);
+    },
+
+    /** Repaint every row's chips from currentScores. */
+    paintScoreChips() {
+        document.querySelectorAll('.criterion-item[data-criterion-row]').forEach(row => {
+            const value = this.currentScores[row.dataset.criterionRow];
+            const hasValue = value !== '' && value !== null && value !== undefined;
+            row.classList.remove('missing', 'invalid');
+            row.querySelectorAll('.score-chip').forEach(chip => {
+                const chipValue = chip.dataset.value === 'none' ? null : Number(chip.dataset.value);
+                const on = hasValue ? chipValue === Number(value) : chipValue === null;
+                chip.classList.toggle('on', on);
+                chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
         });
     },
 
@@ -639,9 +650,9 @@ const JudgeView = {
         for (const criterionId in this.currentScores) {
             const score = this.currentScores[criterionId];
             if (score !== null && score !== undefined && score !== '') {
-                const inputElement = document.querySelector(`input[data-criterion-id="${criterionId}"]`);
-                const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
-                const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
+                const criterion = (this.currentCriteria || []).find(c => c.id === criterionId);
+                const minScore = criterion && criterion.min_score != null ? criterion.min_score : null;
+                const maxScore = criterion && criterion.max_score != null ? criterion.max_score : null;
                 
                 // Skip validation if score range not found (should not happen)
                 if (minScore === null || maxScore === null || isNaN(minScore) || isNaN(maxScore)) {
@@ -732,19 +743,14 @@ const JudgeView = {
         // Validate all scores before saving
         const validation = this.validateAllScores();
         if (!validation.isValid) {
-            const invalidInputs = validation.invalidCriteria.map(id => {
-                const input = document.querySelector(`input[data-criterion-id="${id}"]`);
-                return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
-            }).filter(Boolean);
-            
+            const invalidInputs = validation.invalidCriteria.map(id => this.labelForCriterion(id)).filter(Boolean);
             UI.toast(`Fix these scores first: ${invalidInputs.join(', ')}`, { type: 'error' });
             
-            // Focus on first invalid input
+            // Move the eye to the first row with a problem
             if (validation.invalidCriteria.length > 0) {
-                const firstInvalid = document.querySelector(`input[data-criterion-id="${validation.invalidCriteria[0]}"]`);
-                if (firstInvalid) {
-                    firstInvalid.focus();
-                }
+                const firstInvalidRow = this.rowForCriterion(validation.invalidCriteria[0]);
+                const firstChip = firstInvalidRow && firstInvalidRow.querySelector('.score-chip');
+                if (firstChip) firstChip.focus();
             }
             return;
         }
@@ -768,16 +774,14 @@ const JudgeView = {
 
             if (missingScores.length > 0) {
                 // Clear any previous missing-score highlights
-                document.querySelectorAll('.score-input.missing-score').forEach(input => {
-                    input.classList.remove('missing-score');
-                });
+                document.querySelectorAll('.criterion-item.missing').forEach(row => row.classList.remove('missing'));
 
-                // Highlight missing score fields
+                // Highlight the rows that have no score yet
                 const missingCriteriaNames = [];
                 missingScores.forEach(criterion => {
-                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
-                    if (inputElement) {
-                        inputElement.classList.add('missing-score');
+                    const row = this.rowForCriterion(criterion.id);
+                    if (row) {
+                        row.classList.add('missing');
                         missingCriteriaNames.push(criterion.name);
                     }
                 });
@@ -792,12 +796,13 @@ const JudgeView = {
                     confirmLabel: 'Got it'
                 });
 
-                // Focus and scroll to first missing field
+                // Focus and scroll to the row that needs attention
                 if (missingScores.length > 0) {
-                    const firstMissingInput = document.querySelector(`input[data-criterion-id="${missingScores[0].id}"]`);
-                    if (firstMissingInput) {
-                        firstMissingInput.focus();
-                        firstMissingInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const row = this.rowForCriterion(missingScores[0].id);
+                    const chip = row && row.querySelector('.score-chip');
+                    if (chip) {
+                        chip.focus();
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }
                 return;
@@ -809,10 +814,9 @@ const JudgeView = {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
                     const numScore = parseInt(score);
-                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
-                    const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
-                    const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
-                    
+                    const minScore = criterion.min_score != null ? criterion.min_score : null;
+                    const maxScore = criterion.max_score != null ? criterion.max_score : null;
+
                     // Only save if score range is valid and score is within range
                     if (minScore !== null && maxScore !== null && !isNaN(minScore) && !isNaN(maxScore)) {
                         if (!isNaN(numScore) && numScore >= minScore && numScore <= maxScore) {
@@ -970,19 +974,14 @@ const JudgeView = {
         // Validate all scores are within valid range before submitting
         const validation = this.validateAllScores();
         if (!validation.isValid) {
-            const invalidInputs = validation.invalidCriteria.map(id => {
-                const input = document.querySelector(`input[data-criterion-id="${id}"]`);
-                return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
-            }).filter(Boolean);
-            
+            const invalidInputs = validation.invalidCriteria.map(id => this.labelForCriterion(id)).filter(Boolean);
             UI.toast(`Fix these scores first: ${invalidInputs.join(', ')}`, { type: 'error' });
             
-            // Focus on first invalid input
+            // Move the eye to the first row with a problem
             if (validation.invalidCriteria.length > 0) {
-                const firstInvalid = document.querySelector(`input[data-criterion-id="${validation.invalidCriteria[0]}"]`);
-                if (firstInvalid) {
-                    firstInvalid.focus();
-                }
+                const firstInvalidRow = this.rowForCriterion(validation.invalidCriteria[0]);
+                const firstChip = firstInvalidRow && firstInvalidRow.querySelector('.score-chip');
+                if (firstChip) firstChip.focus();
             }
             return;
         }
@@ -1006,16 +1005,14 @@ const JudgeView = {
 
             if (missingScores.length > 0) {
                 // Clear any previous missing-score highlights
-                document.querySelectorAll('.score-input.missing-score').forEach(input => {
-                    input.classList.remove('missing-score');
-                });
+                document.querySelectorAll('.criterion-item.missing').forEach(row => row.classList.remove('missing'));
 
-                // Highlight missing score fields in RED
+                // Highlight the rows that have no score yet
                 const missingCriteriaNames = [];
                 missingScores.forEach(criterion => {
-                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
-                    if (inputElement) {
-                        inputElement.classList.add('missing-score');
+                    const row = this.rowForCriterion(criterion.id);
+                    if (row) {
+                        row.classList.add('missing');
                         missingCriteriaNames.push(criterion.name);
                     }
                 });
@@ -1029,12 +1026,13 @@ const JudgeView = {
                     confirmLabel: 'Got it'
                 });
 
-                // Focus and scroll to first missing field
+                // Focus and scroll to the row that needs attention
                 if (missingScores.length > 0) {
-                    const firstMissingInput = document.querySelector(`input[data-criterion-id="${missingScores[0].id}"]`);
-                    if (firstMissingInput) {
-                        firstMissingInput.focus();
-                        firstMissingInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const row = this.rowForCriterion(missingScores[0].id);
+                    const chip = row && row.querySelector('.score-chip');
+                    if (chip) {
+                        chip.focus();
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }
 
@@ -1047,10 +1045,9 @@ const JudgeView = {
                 const score = this.currentScores[criterion.id];
                 if (score !== null && score !== undefined && score !== '') {
                     const numScore = parseInt(score);
-                    const inputElement = document.querySelector(`input[data-criterion-id="${criterion.id}"]`);
-                    const minScore = inputElement ? parseInt(inputElement.dataset.minScore) : null;
-                    const maxScore = inputElement ? parseInt(inputElement.dataset.maxScore) : null;
-                    
+                    const minScore = criterion.min_score != null ? criterion.min_score : null;
+                    const maxScore = criterion.max_score != null ? criterion.max_score : null;
+
                     // Only save if score range is valid and score is within range
                     if (minScore !== null && maxScore !== null && !isNaN(minScore) && !isNaN(maxScore)) {
                         if (!isNaN(numScore) && numScore >= minScore && numScore <= maxScore) {
@@ -1146,7 +1143,7 @@ const JudgeView = {
             }
 
             if (scoredStudents.length === 0) {
-                container.innerHTML = '<p class="empty-message">No score saved yet — press Add score to save this student.</p>';
+                container.innerHTML = '<p class="empty-message">Not saved yet — press Save score.</p>';
                 // Update Submit All button state
                 await this.updateSubmitAllButtonState();
                 return;
