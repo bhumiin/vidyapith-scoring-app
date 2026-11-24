@@ -2,6 +2,138 @@
  * Vidyapith Youth Day Scoring System Styles
  */
 
+/* ===========================================================================
+   DESIGN TOKENS — step 1 of the look overhaul (2026-11-24)
+   ---------------------------------------------------------------------------
+   The look was chosen on 2026-11-24: "Signal" — white cards on a cool blue-white
+   canvas, one deep navy primary. The mockup that was chosen lives in the vault at
+   Hermes/Projects/Vidyapith Scoring App/design/option-2-signal.html.
+
+   This block freezes that look as variables and nothing below consumes them yet,
+   so the app renders exactly as it did before. It is the contract, not the change.
+
+   Palette sources, so nobody re-invents it:
+     Vidyapith logo navy  #1F2A7A
+     vidyapith.org ink    #121588
+     this app's primary   #16226E  (between the two, sampled for screen contrast)
+
+   Rules for the steps that follow:
+     1. A restyled rule reads from these variables and does not introduce hex codes.
+     2. A value is written once, here. Screens never restate it.
+     3. Names are frozen; values may be tuned here and only here.
+     4. The purple gradient on <body> goes in step 4, when the views are restyled —
+        removing it earlier would leave white cards on a white page.
+   =========================================================================== */
+
+:root {
+    /* --- colour: brand ---------------------------------------------------- */
+    --color-brand: #16226E;          /* primary: buttons, links, active states */
+    --color-brand-hover: #1D2F92;    /* hover / focus border */
+    --color-brand-strong: #0B1348;   /* pressed, and dark bands (results hero) */
+    --color-brand-mid: #2A3BB5;      /* accent on tinted surfaces */
+    --color-brand-soft: #7C89D6;     /* disabled content on brand */
+    --color-brand-tint: #EEF1FB;     /* selected row, chip, avatar background */
+    --color-brand-tint-soft: #F6F8FD;/* hover row, inset panels */
+
+    /* --- colour: neutrals ------------------------------------------------- */
+    --color-canvas: #F4F6FB;         /* page background */
+    --color-card: #FFFFFF;           /* every surface that holds content */
+    --color-card-muted: #FBFCFE;     /* table footer, quiet panel */
+    --color-ink: #121829;            /* headings, numbers, names */
+    --color-body: #3C4560;           /* labels, default text */
+    --color-muted: #6B7490;          /* secondary text */
+    --color-faint: #98A0B8;          /* hints, placeholders, disabled text */
+    --color-line: #E3E8F3;           /* card and control borders */
+    --color-line-soft: #EDF1F8;      /* row separators inside a card */
+    --color-line-strong: #C7D0E6;    /* hover border, dividers on emphasis */
+
+    /* --- colour: status --------------------------------------------------- */
+    --color-success: #1B7F5A;        /* submitted, saved, all judges in */
+    --color-success-bg: #E8F6F0;
+    --color-warning: #8A5A00;        /* pending, deduction applied */
+    --color-warning-bg: #FDF3DF;
+    --color-danger: #B3261E;         /* validation errors, destructive action */
+    --color-danger-bg: #FDECEA;
+
+    /* --- type ------------------------------------------------------------- */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+                 Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+    --text-2xs: 10px;                /* all-caps section labels, rank numbers */
+    --text-xs: 11px;                 /* badges, meta */
+    --text-sm: 12px;                 /* secondary copy, table headers */
+    --text-base: 13px;               /* body, form labels, chips */
+    --text-md: 14px;                 /* student names, row labels */
+    --text-lg: 16px;                 /* card titles */
+    --text-xl: 20px;                 /* view headings */
+    --text-2xl: 24px;                /* page headings */
+    --text-3xl: 32px;                /* totals */
+    --text-4xl: 40px;                /* the one number that matters on screen */
+
+    --leading-tight: 1.15;
+    --leading-snug: 1.35;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.6;
+
+    --tracking-tight: -0.02em;       /* large numerals and headings */
+    --tracking-normal: 0;
+    --tracking-caps: 0.08em;         /* uppercase labels */
+
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+
+    /* --- space (4px base) ------------------------------------------------- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    /* --- radius ----------------------------------------------------------- */
+    --radius-xs: 4px;
+    --radius-sm: 6px;                /* score chips, badges */
+    --radius-md: 9px;                /* inputs, buttons */
+    --radius-lg: 12px;               /* stat cards */
+    --radius-xl: 14px;               /* the main scoring card, right rail */
+    --radius-2xl: 18px;              /* login card */
+    --radius-pill: 999px;
+
+    /* --- elevation -------------------------------------------------------- */
+    --shadow-xs: 0 1px 2px rgba(18, 34, 110, 0.05);
+    --shadow-sm: 0 1px 3px rgba(18, 34, 110, 0.08), 0 1px 2px rgba(18, 34, 110, 0.04);
+    --shadow-md: 0 8px 24px -12px rgba(18, 34, 110, 0.28);
+    --shadow-lg: 0 24px 48px -28px rgba(18, 34, 110, 0.45);
+    --shadow-none: none;
+
+    /* --- focus and controls ----------------------------------------------- */
+    --color-focus: #1D2F92;
+    --focus-ring: 0 0 0 3px rgba(29, 47, 146, 0.12);
+    --focus-ring-danger: 0 0 0 3px rgba(179, 38, 30, 0.12);
+    --control-height-sm: 30px;
+    --control-height: 40px;
+    --control-height-lg: 48px;
+
+    /* --- component contracts used by the restyle -------------------------- */
+    --border-hairline: 1px solid var(--color-line);
+    --border-separator: 1px solid var(--color-line-soft);
+    --radius-card: var(--radius-xl);
+    --radius-control: var(--radius-md);
+    --shadow-card: var(--shadow-xs);
+    --shadow-pop: var(--shadow-md);
+
+    /* --- layers ----------------------------------------------------------- */
+    --layer-sticky: 10;
+    --layer-modal: 1000;
+    --layer-toast: 1100;
+}
+
 * {
     margin: 0;
     padding: 0;
