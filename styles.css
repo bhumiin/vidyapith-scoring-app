@@ -4871,7 +4871,7 @@ body[data-view="judge"] .view-header .logo,
 body[data-view="superjudge"] .view-header .logo,
 body[data-view="setup"] .view-header .logo {
     order: 0;
-    height: 52px;
+    height: 72px;
     width: auto;
     margin: 0 auto;
     align-self: center;
@@ -4934,18 +4934,14 @@ body[data-view="setup"] .view-header h1::after {
 
 /* ---------- sign-in: the mark centred on the navy panel ---------- */
 body[data-view="login"] .login-brand {
-    position: relative;
     align-items: center;
-    justify-content: flex-end;      /* the title sits at the foot of the panel */
+    justify-content: center;        /* logo and title centred as one group */
     text-align: center;
-    gap: 0;
+    gap: var(--space-5);
 }
 
 body[data-view="login"] .login-logo {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    align-self: center;
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-lg);
 }
@@ -4965,7 +4961,7 @@ body[data-view="login"] .login-brand h1 {
     body[data-view="judge"] .view-header .logo,
     body[data-view="superjudge"] .view-header .logo,
     body[data-view="setup"] .view-header .logo {
-        height: 54px;
+        height: 56px;
     }
 
     body[data-view="login"] .login-logo img {
