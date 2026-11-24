@@ -4158,6 +4158,17 @@ body[data-view="setup"] .form-section {
     gap: var(--space-2);
 }
 
+/* the old sheet gave every input its own margins, which knocked the fields and
+   the button off a shared centre line inside the new flex row */
+body[data-view="setup"] .form-section > input,
+body[data-view="setup"] .form-section > select,
+body[data-view="setup"] .form-section > textarea,
+body[data-view="setup"] .form-section > button,
+body[data-view="setup"] .form-section > .btn {
+    margin: 0;
+    align-self: center;
+}
+
 body[data-view="setup"] .form-section h3 {
     flex: 1 0 100%;
     margin: 0 0 var(--space-1);
@@ -4240,7 +4251,7 @@ body[data-view="setup"] #topic-time-limit-input {
 body[data-view="setup"] .search-input {
     width: 100%;
     flex: 0 0 auto;
-    margin-bottom: var(--space-2);
+    margin: 0 0 var(--space-2);
     height: var(--control-height-sm);
 }
 
@@ -4362,7 +4373,8 @@ body[data-view="setup"] .item-info span {
 }
 
 body[data-view="setup"] .item-card .badge {
-    margin-left: auto;
+    margin-left: 0;
+    align-self: flex-start;
 }
 
 body[data-view="setup"] .badge {
