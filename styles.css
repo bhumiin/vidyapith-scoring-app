@@ -3663,6 +3663,15 @@ body[data-view="superjudge"] .sj-score__n.is-muted {
     color: var(--color-faint);
 }
 
+/* a number that is still moving reads lighter than a final one */
+body[data-view="superjudge"] .sj-score__n.is-provisional {
+    color: var(--color-muted);
+}
+
+body[data-view="superjudge"] .sj-meter.is-provisional i {
+    background: var(--color-line-strong);
+}
+
 body[data-view="superjudge"] .sj-meter {
     display: block;
     height: 4px;

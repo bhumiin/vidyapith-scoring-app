@@ -563,8 +563,9 @@ const SuperJudgeView = {
                             </span>
                             <span class="sj-score">
                                 ${absent ? '<span class="sj-score__n is-muted">—</span>'
-                                        : `<span class="sj-score__n">${avgScore.toFixed(2)}<small> /${maxTotal}</small></span>
-                                           <span class="sj-meter"><i style="width:${pct}%"></i></span>`}
+                                        : `<span class="sj-score__n${allSubmitted ? '' : ' is-provisional'}"
+                                                 title="${allSubmitted ? 'Final average' : 'Provisional — not every judge has submitted'}">${avgScore.toFixed(2)}<small> /${maxTotal}</small></span>
+                                           <span class="sj-meter${allSubmitted ? '' : ' is-provisional'}"><i style="width:${pct}%"></i></span>`}
                             </span>
                             <span class="sj-judges">${absent ? '—' : `${submittedCount} of ${scoringJudges.length}`}</span>
                             <span class="sj-status">${status}</span>
