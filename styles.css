@@ -2888,8 +2888,9 @@ body[data-view="judge"] .class-row__status {
     font-size: var(--text-2xs);
 }
 
-body[data-view="judge"] .class-row__status.saved { color: var(--color-success); }
+body[data-view="judge"] .class-row__status.submitted { color: var(--color-muted); }
 body[data-view="judge"] .class-row__status.draft { color: var(--color-warning); }
+body[data-view="judge"] .class-row__status.submitted::before { content: "✓ "; color: var(--color-success); }
 
 body[data-view="judge"] .class-row__total {
     color: var(--color-ink);
@@ -3062,4 +3063,32 @@ body[data-view="judge"] .empty-panel {
     body[data-view="judge"] #criteria-scores {
         overflow: visible;
     }
+}
+
+/* submitted students are final: the chips say so */
+body[data-view="judge"] .stu-lock {
+    align-self: center;
+    padding: 3px var(--space-2);
+    background: var(--color-success-bg);
+    border-radius: var(--radius-sm);
+    color: var(--color-success);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+body[data-view="judge"] .score-chip:disabled {
+    background: var(--color-line-soft);
+    border-color: var(--color-line);
+    color: var(--color-muted);
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+body[data-view="judge"] .score-chip.on:disabled {
+    background: var(--color-brand-soft);
+    border-color: var(--color-brand-soft);
+    color: var(--color-on-brand);
+    opacity: 0.85;
 }

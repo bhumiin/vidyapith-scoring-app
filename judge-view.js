@@ -5,6 +5,7 @@
 
 const JudgeView = {
     currentStudentId: null,
+    currentSubmitted: false,
     currentScores: {},
     currentNotes: '',
     selectedGradeId: null,
@@ -200,7 +201,7 @@ const JudgeView = {
             await this.updateSubmitAllButtonState();
         } catch (error) {
             console.error('Error rendering judge view:', error);
-            UI.toast('Error loading judge view. Please refresh the page.', { type: 'error' });;
+            UI.toast('Error loading judge view. Please refresh the page.', { type: 'error' });
             // Still update button state on error
             await this.updateSubmitAllButtonState();
         }
@@ -249,13 +250,18 @@ const JudgeView = {
                 const byJudge = (scores[student.id] && scores[student.id][user.id]) || {};
                 const hasScore = value => value !== null && value !== undefined && value !== '';
                 const scoredCount = criteria.filter(c => hasScore(byJudge[c.id])).length;
+                const required = criteria.filter(c => !DataManager.isPenaltyCriterion(c));
+                const complete = required.length > 0 && required.every(c => hasScore(byJudge[c.id]));
                 const submitted = (submissions[student.id] || []).includes(user.id);
                 const total = DataManager.totalForJudge(criteria, c => hasScore(byJudge[c.id]) ? byJudge[c.id] : null);
                 return {
                     id: student.id,
                     name: student.name,
                     total: total,
-                    status: submitted ? 'saved' : scoredCount > 0 ? 'draft' : 'todo'
+                    complete: complete,
+                    scored: scoredCount,
+                    required: required.length,
+                    status: submitted ? 'submitted' : scoredCount > 0 ? 'draft' : 'todo'
                 };
             });
 
@@ -287,7 +293,7 @@ const JudgeView = {
             container.innerHTML = '<p class="class-empty">No student matches.</p>';
         } else {
             const initials = name => name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
-            const label = status => status === 'saved' ? 'Submitted' : status === 'draft' ? 'In progress' : 'Not started';
+            const label = status => status === 'submitted' ? 'Submitted' : status === 'draft' ? 'Draft' : 'Not started';
             container.innerHTML = rows.map(row => `
                 <button type="button" class="class-row ${row.id === this.currentStudentId ? 'on' : ''}"
                         data-student-id="${row.id}">
@@ -302,19 +308,29 @@ const JudgeView = {
         }
 
         // counts + progress on the panel
-        const saved = all.filter(r => r.status === 'saved').length;
+        const submitted = all.filter(r => r.status === 'submitted').length;
         const draft = all.filter(r => r.status === 'draft').length;
         const todo = all.filter(r => r.status === 'todo').length;
         const countEl = document.getElementById('class-count');
-        if (countEl) countEl.textContent = all.length ? `${saved} of ${all.length} submitted` : '—';
+        if (countEl) countEl.textContent = all.length ? `${submitted} of ${all.length} submitted` : '—';
 
         const labelEl = document.getElementById('class-progress-label');
         if (labelEl) labelEl.textContent = all.length
-            ? `${saved} submitted · ${draft} in progress · ${todo} not started`
+            ? `${submitted} submitted · ${draft} draft · ${todo} not started`
             : '';
 
         const bar = document.getElementById('class-progress-bar');
-        if (bar) bar.style.width = all.length ? Math.round((saved / all.length) * 100) + '%' : '0%';
+        if (bar) bar.style.width = all.length ? Math.round((submitted / all.length) * 100) + '%' : '0%';
+
+        const nextOpen = document.getElementById('next-open');
+        if (nextOpen) {
+            const nothingLeft = all.length > 0 && all.every(r => r.status === 'submitted');
+            nextOpen.disabled = nothingLeft || all.length === 0;
+            nextOpen.classList.toggle('btn-disabled', nextOpen.disabled);
+            nextOpen.title = nothingLeft
+                ? 'Every student in this grade is submitted'
+                : 'Open the next student who is not submitted yet';
+        }
     },
 
     /** Open a student, saving the open one first if anything changed. */
@@ -360,7 +376,18 @@ const JudgeView = {
         const user = await AuthManager.getCurrentUser();
         if (!user) return 0;
 
-        if (await DataManager.isSubmitted(studentId, user.id)) return 0;   // locked
+        const submitted = await DataManager.isSubmitted(studentId, user.id);
+        if (submitted) {
+            // Scores are final once submitted; the note is still the judge's own
+            const notesEl = document.getElementById('judge-notes-input');
+            const nextNotes = notesEl ? notesEl.value : this.currentNotes;
+            if (nextNotes !== (this.savedNotes || '')) {
+                await SupabaseService.setNote(studentId, user.id, nextNotes || '');
+                this.savedNotes = nextNotes || '';
+                return 1;
+            }
+            return 0;
+        }
 
         const criteria = this.currentCriteria || [];
         const normalise = value => (value === '' || value === null || value === undefined) ? null : Number(value);
@@ -395,8 +422,25 @@ const JudgeView = {
         return writes.length;
     },
 
+    /**
+     * A submitted student is final: the database refuses writes anyway, so the
+     * chips must not pretend otherwise.
+     */
+    lockChips(locked) {
+        document.querySelectorAll('.score-chip').forEach(chip => {
+            chip.disabled = !!locked;
+        });
+        const saveBtn = document.getElementById('save-scores');
+        if (saveBtn && locked) {
+            saveBtn.disabled = true;
+            saveBtn.classList.add('btn-disabled');
+            saveBtn.title = 'This student is submitted — scores are locked';
+        }
+    },
+
     clearStudent() {
         this.currentStudentId = null;
+        this.currentSubmitted = false;
         this.currentScores = {};
         this.savedScores = {};
         this.currentNotes = '';
@@ -499,10 +543,14 @@ const JudgeView = {
             const criteria = await DataManager.getCriteria();
             const user = await AuthManager.getCurrentUser();
 
+            this.currentSubmitted = await DataManager.isSubmitted(studentId, user.id);
+
             document.getElementById('current-student-name').textContent = student.name;
             // flex, not block: the card is a column with a scrolling middle and a pinned footer
             document.getElementById('judge-scoring-section').style.display = 'flex';
             document.getElementById('judge-no-student').style.display = 'none';
+            const lockBadge = document.getElementById('student-lock');
+            if (lockBadge) lockBadge.hidden = !this.currentSubmitted;
 
             // Load existing scores
             this.currentScores = {};
@@ -706,13 +754,14 @@ const JudgeView = {
 
             container.innerHTML = htmlOutput;
             this.paintScoreChips();
+            this.lockChips(this.currentSubmitted);
             this.calculateTotal();
             this.updateButtonStates().catch(error => {
                 console.error('Error updating button states:', error);
             });
         } catch (error) {
             console.error('Error selecting student:', error);
-            UI.toast('Error loading student. Please try again.', { type: 'error' });;
+            UI.toast('Error loading student. Please try again.', { type: 'error' });
         }
     },
 
@@ -821,43 +870,20 @@ const JudgeView = {
      * Update button states based on score validation and submission status
      */
     async updateButtonStates() {
-        const validation = this.validateAllScores();
         const saveBtn = document.getElementById('save-scores');
-        
         if (!saveBtn) return;
-        
-        // Check if all students for the grade are submitted
-        const user = await AuthManager.getCurrentUser();
-        if (user && this.selectedGradeId) {
-            let students = await GroupManager.getStudentsForJudge(user.id);
-            students = students.filter(s => s.group_id === this.selectedGradeId);
-            
-            let allSubmitted = true;
-            for (const student of students) {
-                const submitted = await DataManager.isSubmitted(student.id, user.id);
-                if (!submitted) {
-                    allSubmitted = false;
-                    break;
-                }
-            }
-            
-            // If all students are submitted, disable Add score button
-            if (allSubmitted) {
-                saveBtn.disabled = true;
-                saveBtn.classList.add('btn-disabled');
-                return;
-            }
-        }
-        
-        if (validation.isValid) {
-            // Valid scores - enable button
-            saveBtn.disabled = false;
-            saveBtn.classList.remove('btn-disabled');
-        } else {
-            // Invalid scores - disable button
-            saveBtn.disabled = true;
-            saveBtn.classList.add('btn-disabled');
-        }
+
+        const setState = (disabled, title) => {
+            saveBtn.disabled = disabled;
+            saveBtn.classList.toggle('btn-disabled', disabled);
+            saveBtn.title = title || '';
+        };
+
+        if (!this.currentStudentId) return setState(true, 'Pick a student first');
+        if (this.currentSubmitted) return setState(true, 'This student is submitted — scores are locked');
+
+        const validation = this.validateAllScores();
+        setState(!validation.isValid, validation.isValid ? '' : 'Fix the highlighted scores first');
     },
 
     calculateTotal() {
@@ -880,7 +906,12 @@ const JudgeView = {
 
     async addScore() {
         if (!this.currentStudentId) {
-            UI.toast('Please select a student first', { type: 'error' });;
+            UI.toast('Please select a student first', { type: 'error' });
+            return;
+        }
+
+        if (this.currentSubmitted) {
+            UI.toast('This student is already submitted — scores are locked.', { type: 'error' });
             return;
         }
 
@@ -994,13 +1025,13 @@ const JudgeView = {
 
             const runningTotal = document.getElementById('judge-total-score');
             const maxTotal = (runningTotal && runningTotal.dataset.max) || '40';
-            UI.toast('Score saved · ' + (runningTotal ? runningTotal.textContent : '0') + ' / ' + maxTotal,
+            UI.toast('Draft saved · ' + (runningTotal ? runningTotal.textContent : '0') + ' / ' + maxTotal,
                 { type: 'success' });
             await this.renderClassList();
             // updateSubmitAllButtonState is called inside renderScoredStudents
         } catch (error) {
             console.error('Error adding score:', error);
-            UI.toast('Error adding score. Please try again.', { type: 'error' });;
+            UI.toast('Error adding score. Please try again.', { type: 'error' });
         }
     },
 
@@ -1009,123 +1040,86 @@ const JudgeView = {
             const user = await AuthManager.getCurrentUser();
             if (!user) return;
 
-            // Check if a grade is selected
             if (!this.selectedGradeId) {
-                UI.toast('Please select a grade first', { type: 'error' });;
+                UI.toast('Pick a grade first.', { type: 'error' });
                 return;
             }
 
-            // Get all students assigned to judge for the selected grade
-            let students = await GroupManager.getStudentsForJudge(user.id);
-            students = students.filter(s => s.group_id === this.selectedGradeId);
-
-            if (students.length === 0) {
-                UI.toast('No students assigned to this grade', { type: 'error' });;
+            const students = (await GroupManager.getStudentsForJudge(user.id))
+                .filter(s => s.group_id === this.selectedGradeId);
+            if (!students.length) {
+                UI.toast('No students are assigned to this grade.', { type: 'error' });
                 return;
             }
 
-            const criteria = await DataManager.getCriteria();
-            const pendingStudents = [];
+            // One bulk pass - statuses and totals come from the same rows the
+            // list is drawn from, so what is submitted matches what is on screen.
+            await this.renderClassList();
+            const rows = this._classRows || [];
 
-            // Check each student for pending scoring
-            for (const student of students) {
-                let hasAnyScore = false;
-                const missingCriteria = [];
-
-                // Check if student has any scores
-                for (const criterion of criteria) {
-                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
-                    if (score !== null) {
-                        hasAnyScore = true;
-                    }
-                }
-
-                // If no scores at all, mark as pending
-                if (!hasAnyScore) {
-                    pendingStudents.push({
-                        student: student,
-                        reason: 'No scores entered'
-                    });
-                    continue;
-                }
-
-                // Check for missing required criteria scores
-                for (const criterion of criteria) {
-                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
-                    const isOptional = DataManager.isPenaltyCriterion(criterion);
-                    
-                    // Skip optional criteria
-                    if (isOptional) {
-                        continue;
-                    }
-                    
-                    // If required criterion has no score, add to missing list
-                    if (score === null || score === undefined || score === '') {
-                        missingCriteria.push(criterion.name);
-                    }
-                }
-
-                // If missing required scores, mark as pending
-                if (missingCriteria.length > 0) {
-                    pendingStudents.push({
-                        student: student,
-                        reason: `Missing: ${missingCriteria.join(', ')}`
-                    });
-                }
-            }
-
-            // If any students are pending, show error
-            if (pendingStudents.length > 0) {
+            const unfinished = rows.filter(row => row.status !== 'submitted' && !row.complete);
+            if (unfinished.length) {
                 await UI.modal.list({
                     title: 'Not every student is finished',
-                    message: 'Finish these before submitting the whole grade:',
-                    items: pendingStudents.map(item => `${item.student.name} — ${item.reason}`),
+                    message: 'Submit All needs a draft for every student. These are not complete:',
+                    items: unfinished.map(row => `${row.name} — ${row.scored} of ${row.required} criteria scored`),
                     confirmLabel: 'Got it'
                 });
                 return;
             }
 
-            // All students are complete - submit all scores
-            let submittedCount = 0;
+            const todo = rows.filter(row => row.status !== 'submitted');
+            if (!todo.length) {
+                UI.toast('Every student in this grade is already submitted.', { type: 'success' });
+                return;
+            }
+
+            const confirmed = await UI.modal.confirm({
+                title: `Submit ${todo.length === 1 ? 'this student' : `all ${todo.length} students`}?`,
+                message: 'This is final: the scores lock and you cannot change them afterwards.',
+                confirmLabel: 'Submit final scores',
+                cancelLabel: 'Keep editing',
+                danger: true
+            });
+            if (!confirmed) return;
+
             const failures = [];
-            for (const student of students) {
+            let submitted = 0;
+            for (const row of todo) {
                 try {
-                    await DataManager.submitScores(student.id, user.id);
-                    submittedCount++;
+                    await DataManager.submitScores(row.id, user.id);
+                    submitted++;
                 } catch (error) {
-                    console.error(`Error submitting scores for ${student.name}:`, error);
-                    failures.push(`${student.name}: ${error.message || error}`);
+                    console.error(`Could not submit ${row.name}:`, error);
+                    failures.push(`${row.name} — ${error.message || error}`);
                 }
             }
 
-            if (failures.length > 0) {
+            if (failures.length) {
                 await UI.modal.list({
                     title: 'Some students did not submit',
-                    message: `${submittedCount} of ${students.length} submitted. These failed:`,
+                    message: `${submitted} of ${todo.length} submitted. These failed:`,
                     items: failures,
                     confirmLabel: 'Close'
                 });
             } else {
-                UI.toast(`Successfully submitted scores for ${submittedCount} student(s)!`, { type: 'success' });;
+                UI.toast(`Submitted ${submitted} ${submitted === 1 ? 'student' : 'students'} · scores are locked`, { type: 'success' });
             }
+
             await this.renderClassList();
-            
-            // Disable both buttons after successful submission
-            await this.disableAllButtons();
-            
-            // Refresh current student view if one is selected
+            await this.updateSubmitAllButtonState();
             if (this.currentStudentId) {
                 await this.selectStudent(this.currentStudentId);
             }
         } catch (error) {
             console.error('Error submitting all scores:', error);
-            UI.toast('Error submitting all scores. Please try again.', { type: 'error' });;
+            UI.toast('Could not submit the grade. Please try again.', { type: 'error' });
         }
     },
 
     async submitScores() {
         if (!this.currentStudentId) {
-            UI.toast('Please select a student first', { type: 'error' });;
+            UI.toast('Please select a student first', { type: 'error' });
             return;
         }
 
@@ -1227,12 +1221,12 @@ const JudgeView = {
             // Mark as submitted
             await DataManager.submitScores(this.currentStudentId, user.id);
 
-            UI.toast('Scores submitted successfully!', { type: 'success' });;
+            UI.toast('Scores submitted successfully!', { type: 'success' });
             await this.selectStudent(this.currentStudentId); // Refresh to show locked state
             await this.renderClassList();
         } catch (error) {
             console.error('Error submitting scores:', error);
-            UI.toast('Error submitting scores. Please try again.', { type: 'error' });;
+            UI.toast('Error submitting scores. Please try again.', { type: 'error' });
         }
     },
 
@@ -1279,22 +1273,22 @@ const JudgeView = {
                 return;
             }
 
-            const isSaved = student => (submissions[student.id] || []).includes(user.id);
-            const allSubmitted = students.every(isSaved);
+            const isSubmitted = student => (submissions[student.id] || []).includes(user.id);
+            const allSubmitted = students.every(isSubmitted);
 
-            // Submit All is for finishing the grade: every student has to be
-            // saved first, and then the button stops being useful.
-            const allScored = (this._classRows || []).length
-                ? this._classRows.every(row => row.status !== 'todo')
-                : false;
+            // Submit All is the final act for the grade: every student needs a
+            // complete draft first, and once submitted the judge cannot edit.
+            const rows = this._classRows || [];
+            const allComplete = rows.length === students.length && rows.every(row =>
+                row.status === 'submitted' || row.complete);
 
-            const blocked = allSubmitted || !allScored;
+            const blocked = allSubmitted || !allComplete;
             setDisabled(submitAllBtn, blocked);
             submitAllBtn.title = allSubmitted
                 ? 'Every student in this grade is already submitted'
-                : !allScored
-                    ? 'Save every student in the list before submitting the grade'
-                    : 'Submit every student in this grade at once';
+                : !allComplete
+                    ? 'Save a draft for every student first, with a score on every criterion'
+                    : 'Submit every student in this grade — scores lock after this';
         } catch (error) {
             console.error('Error updating Submit All button state:', error);
             setDisabled(submitAllBtn, true);
@@ -1317,106 +1311,6 @@ const JudgeView = {
         return this.renderClassList();
     },
 
-    async updateSubmitAllButtonState() {
-        try {
-            const submitAllBtn = document.getElementById('submit-all-scores');
-            const addScoreBtn = document.getElementById('save-scores');
-            
-            if (!submitAllBtn) return;
-
-            const user = await AuthManager.getCurrentUser();
-            if (!user) return;
-
-            // Check if a grade is selected
-            if (!this.selectedGradeId) {
-                submitAllBtn.disabled = true;
-                submitAllBtn.classList.add('btn-disabled');
-                if (addScoreBtn) {
-                    addScoreBtn.disabled = true;
-                    addScoreBtn.classList.add('btn-disabled');
-                }
-                return;
-            }
-
-            // Get all students assigned to judge for the selected grade
-            let students = await GroupManager.getStudentsForJudge(user.id);
-            students = students.filter(s => s.group_id === this.selectedGradeId);
-
-            if (students.length === 0) {
-                submitAllBtn.disabled = true;
-                submitAllBtn.classList.add('btn-disabled');
-                if (addScoreBtn) {
-                    addScoreBtn.disabled = true;
-                    addScoreBtn.classList.add('btn-disabled');
-                }
-                return;
-            }
-
-            const criteria = await DataManager.getCriteria();
-
-            // Check if all students are submitted
-            let allSubmitted = true;
-            for (const student of students) {
-                const submitted = await DataManager.isSubmitted(student.id, user.id);
-                if (!submitted) {
-                    allSubmitted = false;
-                    break;
-                }
-            }
-
-            // If all students are submitted, disable both buttons
-            if (allSubmitted) {
-                submitAllBtn.disabled = true;
-                submitAllBtn.classList.add('btn-disabled');
-                if (addScoreBtn) {
-                    addScoreBtn.disabled = true;
-                    addScoreBtn.classList.add('btn-disabled');
-                }
-                return;
-            }
-
-            // Check if all students have at least one score
-            let allScored = true;
-            for (const student of students) {
-                let hasAnyScore = false;
-                for (const criterion of criteria) {
-                    const score = await DataManager.getScore(student.id, user.id, criterion.id);
-                    if (score !== null) {
-                        hasAnyScore = true;
-                        break;
-                    }
-                }
-                if (!hasAnyScore) {
-                    allScored = false;
-                    break;
-                }
-            }
-
-            // Enable Submit All button only if all students are scored (but not yet submitted)
-            if (allScored) {
-                submitAllBtn.disabled = false;
-                submitAllBtn.classList.remove('btn-disabled');
-            } else {
-                submitAllBtn.disabled = true;
-                submitAllBtn.classList.add('btn-disabled');
-            }
-            
-            // Add score button state is managed by updateButtonStates()
-        } catch (error) {
-            console.error('Error updating Submit All button state:', error);
-            // On error, disable button to be safe
-            const submitAllBtn = document.getElementById('submit-all-scores');
-            const addScoreBtn = document.getElementById('save-scores');
-            if (submitAllBtn) {
-                submitAllBtn.disabled = true;
-                submitAllBtn.classList.add('btn-disabled');
-            }
-            if (addScoreBtn) {
-                addScoreBtn.disabled = true;
-                addScoreBtn.classList.add('btn-disabled');
-            }
-        }
-    },
 
     /**
      * Disable both Submit All and Add score buttons
@@ -1455,7 +1349,7 @@ const JudgeView = {
             modal.style.display = 'flex';
         } catch (error) {
             console.error('Error showing notes modal:', error);
-            UI.toast('Error loading notes. Please try again.', { type: 'error' });;
+            UI.toast('Error loading notes. Please try again.', { type: 'error' });
         }
     },
 
@@ -1478,7 +1372,7 @@ const JudgeView = {
             const modalTextarea = document.getElementById('notes-modal-textarea');
 
             if (!studentId) {
-                UI.toast('Error: Student ID not found', { type: 'error' });;
+                UI.toast('Error: Student ID not found', { type: 'error' });
                 return;
             }
 
@@ -1497,12 +1391,12 @@ const JudgeView = {
                 }
             }
 
-            UI.toast('Notes saved successfully!', { type: 'success' });;
+            UI.toast('Notes saved successfully!', { type: 'success' });
             this.hideNotesModal();
             await this.renderClassList();
         } catch (error) {
             console.error('Error saving notes:', error);
-            UI.toast('Error saving notes. Please try again.', { type: 'error' });;
+            UI.toast('Error saving notes. Please try again.', { type: 'error' });
         }
     }
 };

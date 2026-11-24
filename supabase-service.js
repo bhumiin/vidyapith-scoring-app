@@ -167,8 +167,16 @@ const SupabaseService = {
                 .insert([{ name: name.trim() }])
                 .select()
                 .single();
-            
-            if (error) throw error;
+
+            if (error) {
+                // 42501: row-level security refused the write (student submitted)
+                if (error.code === 'PGRST116' || error.code === '42501') {
+                    const locked = new Error('That score is locked - the student is already submitted.');
+                    locked.code = 'SCORE_LOCKED';
+                    throw locked;
+                }
+                throw error;
+            }
             return data;
         } catch (error) {
             console.error('Error adding student:', error);
@@ -687,14 +695,23 @@ const SupabaseService = {
      */
     async deleteScore(studentId, judgeId, criterionId) {
         try {
-            const { error } = await getSupabaseClient()
+            // select() back the deleted rows: RLS refuses a delete by matching
+            // nothing, which PostgREST reports as 0 rows rather than an error -
+            // without this the UI would claim a locked score was removed.
+            const { data, error } = await getSupabaseClient()
                 .from('scores')
                 .delete()
                 .eq('student_id', studentId)
                 .eq('judge_id', judgeId)
-                .eq('criterion_id', criterionId);
+                .eq('criterion_id', criterionId)
+                .select('id');
 
             if (error) throw error;
+            if (!data || data.length === 0) {
+                const locked = new Error('That score is locked - the student is already submitted.');
+                locked.code = 'SCORE_LOCKED';
+                throw locked;
+            }
             return true;
         } catch (error) {
             console.error('Error deleting score:', error);

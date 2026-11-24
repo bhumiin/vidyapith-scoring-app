@@ -221,8 +221,8 @@
                     <div class="class-filters" id="class-filters">
                         <button type="button" data-filter="all" class="on">All</button>
                         <button type="button" data-filter="todo">Not started</button>
-                        <button type="button" data-filter="draft">In progress</button>
-                        <button type="button" data-filter="saved">Submitted</button>
+                        <button type="button" data-filter="draft">Draft</button>
+                        <button type="button" data-filter="submitted">Submitted</button>
                     </div>
                     <div id="scored-students-list" class="class-list"></div>
                     <div class="class-panel__foot">
@@ -236,6 +236,7 @@
                     <div id="judge-scoring-section" class="scoring-section" style="display: none;">
                         <div class="stu-head">
                             <h2 id="current-student-name"></h2>
+                            <span id="student-lock" class="stu-lock" hidden>Submitted · locked</span>
                             <div class="stu-total">
                                 <span class="lab">Total</span>
                                 <span id="judge-total-score">0</span>
@@ -253,7 +254,7 @@
                         </div>
                         <div class="scoring-actions">
                             <button id="next-open" class="btn btn-quiet" type="button" title="Open the next student who is not submitted yet">Next unfinished →</button>
-                            <button id="save-scores" class="btn btn-primary" type="button">Save score</button>
+                            <button id="save-scores" class="btn btn-primary" type="button">Save draft</button>
                         </div>
                     </div>
                     <div id="judge-no-student" class="empty-panel">
