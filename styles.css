@@ -1914,3 +1914,626 @@ body {
         transition: none;
     }
 }
+
+/* ===========================================================================
+   STEP 4 — the judge screen, converted to the tokens
+   ---------------------------------------------------------------------------
+   Scoped to body[data-view="judge"], which app.js sets in showView(), so the
+   other three screens keep their old styling until their own pass. The rules
+   only override what exists; judge-view.js still renders the same markup.
+
+   Shape: a cool canvas, one white card per job (which student, scoring, who is
+   already scored), the running total and the save action pinned to the bottom
+   of the scoring card. Same order the judge works in.
+   =========================================================================== */
+
+body[data-view="judge"] {
+    padding: var(--space-5) var(--space-4);
+    background: var(--color-canvas);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
+}
+
+body[data-view="judge"] #app {
+    max-width: 920px;
+}
+
+/* --- app bar -------------------------------------------------------------- */
+
+body[data-view="judge"] .view-header {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+
+body[data-view="judge"] .view-header .logo {
+    height: 34px;
+    width: auto;
+    margin: 0;
+}
+
+body[data-view="judge"] .view-header h1 {
+    display: none;                    /* the judge's name is the title */
+}
+
+body[data-view="judge"] .judge-name-display {
+    width: auto;
+    margin: 0;
+    color: var(--color-ink);
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
+    text-align: left;
+}
+
+body[data-view="judge"] .judge-grades-display {
+    width: auto;
+    margin: 0;
+    gap: var(--space-2);
+}
+
+body[data-view="judge"] .grade-capsule {
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--color-brand-tint);
+    color: var(--color-brand);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    border: 1px solid transparent;
+    box-shadow: none;
+}
+
+body[data-view="judge"] .grade-capsule.clickable:hover {
+    background: var(--color-brand-tint-soft);
+    border-color: var(--color-line-strong);
+    transform: none;
+    box-shadow: none;
+}
+
+body[data-view="judge"] .grade-capsule.selected {
+    background: var(--color-brand);
+    border-color: var(--color-brand);
+    color: var(--color-on-brand);
+    box-shadow: none;
+}
+
+body[data-view="judge"] .judge-topics-display {
+    order: 4;
+    flex-basis: 100%;
+    width: 100%;
+    margin: 0;
+    padding-top: var(--space-2);
+    border-top: var(--border-separator);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    text-align: left;
+}
+
+body[data-view="judge"] .topics-display {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    text-align: left;
+}
+
+body[data-view="judge"] .topics-title {
+    margin: 0;
+    color: var(--color-faint);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+body[data-view="judge"] .topics-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+body[data-view="judge"] .topics-list li {
+    color: var(--color-body);
+}
+
+body[data-view="judge"] .topics-list li + li::before {
+    content: "·";
+    margin-right: var(--space-2);
+    color: var(--color-faint);
+}
+
+body[data-view="judge"] .topic-message {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+}
+
+body[data-view="judge"] .header-content {
+    width: auto;
+    margin-left: auto;
+}
+
+/* --- buttons and fields --------------------------------------------------- */
+
+body[data-view="judge"] .btn {
+    height: var(--control-height);
+    padding: 0 var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    transition: background 120ms ease, border-color 120ms ease;
+    transform: none;
+}
+
+body[data-view="judge"] .btn:hover {
+    transform: none;
+}
+
+body[data-view="judge"] .btn-primary {
+    background: var(--color-brand);
+    color: var(--color-on-brand);
+    box-shadow: none;
+}
+
+body[data-view="judge"] .btn-primary:hover {
+    background: var(--color-brand-hover);
+    box-shadow: none;
+}
+
+body[data-view="judge"] .btn-secondary,
+body[data-view="judge"] .btn-quiet {
+    background: var(--color-card);
+    border-color: var(--color-line);
+    color: var(--color-body);
+}
+
+body[data-view="judge"] .btn-secondary:hover,
+body[data-view="judge"] .btn-quiet:hover {
+    border-color: var(--color-line-strong);
+    background: var(--color-card);
+}
+
+body[data-view="judge"] .btn-success {
+    background: var(--color-success);
+    color: var(--color-on-brand);
+}
+
+body[data-view="judge"] .btn-danger {
+    background: var(--color-danger);
+    color: var(--color-on-brand);
+}
+
+body[data-view="judge"] .btn:disabled,
+body[data-view="judge"] .btn.btn-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--color-line-soft);
+    border-color: var(--color-line);
+    color: var(--color-muted);
+}
+
+body[data-view="judge"] .btn-sm {
+    height: var(--control-height-sm);
+    padding: 0 var(--space-3);
+    font-size: var(--text-sm);
+}
+
+/* --- which student -------------------------------------------------------- */
+
+body[data-view="judge"] .judge-content {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body[data-view="judge"] .student-selector-section {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+
+body[data-view="judge"] .student-selector-section h2 {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+body[data-view="judge"] .student-select {
+    flex: 1;
+    max-width: 460px;
+    margin: 0;
+    height: var(--control-height);
+    padding: 0 var(--space-3);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+}
+
+body[data-view="judge"] .student-select:focus {
+    outline: 0;
+    border-color: var(--color-focus);
+    box-shadow: var(--focus-ring);
+}
+
+/* --- the scoring card ----------------------------------------------------- */
+
+body[data-view="judge"] .scoring-section {
+    margin: 0;
+    padding: 0;
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+
+body[data-view="judge"] .scoring-section h2 {
+    margin: 0;
+    padding: var(--space-4) var(--space-4) var(--space-2);
+    color: var(--color-ink);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
+    text-align: left;
+}
+
+body[data-view="judge"] #current-student-name {
+    text-align: left;
+    color: var(--color-ink);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
+}
+
+body[data-view="judge"] #criteria-scores {
+    padding: 0 var(--space-4);
+}
+
+body[data-view="judge"] .criterion-groups-row {
+    display: block;
+    margin: 0;
+}
+
+body[data-view="judge"] .criterion-groups-row .criterion-group {
+    min-width: 0;
+    flex: none;
+    margin: 0;
+}
+
+body[data-view="judge"] .criterion-group {
+    margin: 0;
+    padding: var(--space-3) 0 var(--space-2);
+    background: none;
+    border: 0;
+    border-top: var(--border-separator);
+    border-radius: 0;
+}
+
+body[data-view="judge"] #criteria-scores > .criterion-group:first-child {
+    border-top: 0;
+}
+
+body[data-view="judge"] .criterion-group-title {
+    margin: 0 0 var(--space-2);
+    padding: 0;
+    border: 0;
+    color: var(--color-brand);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    text-align: left;
+}
+
+body[data-view="judge"] .criterion-group-items,
+body[data-view="judge"] .criterion-group-items-horizontal {
+    display: block;
+    margin: 0;
+}
+
+body[data-view="judge"] .criterion-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-2) 0;
+    background: none;
+    border-radius: 0;
+    border-bottom: 1px dashed var(--color-line-soft);
+}
+
+body[data-view="judge"] .criterion-item:last-child {
+    border-bottom: 0;
+}
+
+body[data-view="judge"] .criterion-item label {
+    margin: 0;
+    color: var(--color-body);
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    text-align: left;
+}
+
+body[data-view="judge"] .score-input {
+    width: 76px;
+    height: 44px;
+    padding: 0 var(--space-2);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+body[data-view="judge"] .score-input::placeholder {
+    color: var(--color-faint);
+    font-weight: var(--weight-regular);
+}
+
+body[data-view="judge"] .score-input:hover {
+    border-color: var(--color-line-strong);
+}
+
+body[data-view="judge"] .score-input:focus {
+    outline: 0;
+    border-color: var(--color-focus);
+    box-shadow: var(--focus-ring);
+}
+
+body[data-view="judge"] .score-input:disabled {
+    background: var(--color-line-soft);
+    color: var(--color-muted);
+}
+
+body[data-view="judge"] .score-input.invalid-score,
+body[data-view="judge"] .score-input.missing-score {
+    border-color: var(--color-danger);
+    background: var(--color-danger-bg);
+}
+
+body[data-view="judge"] .score-input.invalid-score:focus,
+body[data-view="judge"] .score-input.missing-score:focus {
+    box-shadow: var(--focus-ring-danger);
+}
+
+/* preparation is a deduction, so it reads as one */
+
+body[data-view="judge"] .criterion-group.penalty {
+    margin: var(--space-3) 0;
+    padding: var(--space-3) 0 var(--space-2) var(--space-3);
+    background: var(--color-card-muted);
+    border: 0;
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-sm);
+}
+
+body[data-view="judge"] .criterion-group.penalty .criterion-group-title {
+    color: var(--color-warning);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: var(--text-sm);
+}
+
+body[data-view="judge"] .criterion-group.penalty .criterion-item {
+    border-bottom-color: color-mix(in srgb, var(--color-warning) 18%, transparent);
+}
+
+body[data-view="judge"] .penalty-indicator {
+    margin: 0 0 var(--space-2);
+    color: var(--color-warning);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+}
+
+/* --- the note and the total ---------------------------------------------- */
+
+body[data-view="judge"] .notes-section {
+    margin: 0;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    background: none;
+    border-top: var(--border-separator);
+    border-radius: 0;
+}
+
+body[data-view="judge"] .notes-section label {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--color-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+}
+
+body[data-view="judge"] .notes-textarea {
+    min-height: 64px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-md);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+}
+
+body[data-view="judge"] .notes-textarea:focus {
+    outline: 0;
+    border-color: var(--color-focus);
+    box-shadow: var(--focus-ring);
+}
+
+body[data-view="judge"] .score-summary {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-card-muted);
+    border-top: var(--border-hairline);
+    border-radius: 0;
+    box-shadow: 0 -1px 0 var(--color-line-soft);
+}
+
+body[data-view="judge"] .score-summary .total-score {
+    margin-right: auto;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+}
+
+body[data-view="judge"] .total-score strong {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-weight: var(--weight-medium);
+}
+
+body[data-view="judge"] #judge-total-score {
+    color: var(--color-brand);
+    font-size: var(--text-3xl);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+}
+
+body[data-view="judge"] #judge-total-score::after {
+    content: " / " attr(data-max);
+    color: var(--color-faint);
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+    letter-spacing: 0;
+}
+
+/* --- who is already scored ------------------------------------------------ */
+
+body[data-view="judge"] .scored-students-section {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-4);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+}
+
+body[data-view="judge"] .scored-students-section h2 {
+    margin: 0 0 var(--space-3);
+    color: var(--color-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+}
+
+body[data-view="judge"] .scored-student-card {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-2);
+    padding: var(--space-3) var(--space-3);
+    background: var(--color-card);
+    border: var(--border-hairline);
+    border-left: var(--border-hairline);
+    border-radius: var(--radius-md);
+}
+
+body[data-view="judge"] .scored-student-card.draft {
+    background: var(--color-brand-tint-soft);
+}
+
+body[data-view="judge"] .scored-student-card:last-child {
+    margin-bottom: 0;
+}
+
+body[data-view="judge"] .scored-student-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+body[data-view="judge"] .scored-student-info strong {
+    color: var(--color-ink);
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+}
+
+body[data-view="judge"] .scored-student-total {
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+body[data-view="judge"] .scored-student-total strong {
+    color: var(--color-ink);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-tight);
+}
+
+body[data-view="judge"] .badge {
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.02em;
+}
+
+body[data-view="judge"] .badge-success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+body[data-view="judge"] .badge-warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+}
+
+body[data-view="judge"] #submit-all-scores {
+    width: 100%;
+    margin-top: var(--space-3);
+}
+
+body[data-view="judge"] .empty-message {
+    margin: 0;
+    padding: var(--space-4);
+    color: var(--color-muted);
+    font-size: var(--text-base);
+    text-align: center;
+}

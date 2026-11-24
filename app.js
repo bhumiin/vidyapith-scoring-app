@@ -71,6 +71,9 @@ const App = {
     },
 
     showView(viewName) {
+        // The view name on <body> lets the restyle convert one screen at a time
+        document.body.dataset.view = viewName;
+
         // Hide all views
         document.querySelectorAll('.view').forEach(view => {
             view.classList.remove('active');

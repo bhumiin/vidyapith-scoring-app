@@ -338,7 +338,7 @@ const JudgeView = {
         
         topicsContainerElement.innerHTML = `
             <div class="topics-display">
-                <h3 class="topics-title">Topics:</h3>
+                <h3 class="topics-title">${topics.length === 1 ? 'Topic:' : 'Topics:'}</h3>
                 <ul class="topics-list">${topicsList}</ul>
             </div>
         `;
@@ -480,8 +480,10 @@ const JudgeView = {
                         }
                     }
                     
+                    // The deduction group says "leave blank for none" once, above the
+                    // rows; repeating it per field made every row unreadable.
                     const rangeLabel = isPenalty
-                        ? `${criterion.name} (${minScore}-${maxScore}, deducted — leave blank for none):`
+                        ? `${criterion.name}:`
                         : `${criterion.name} (${minScore}-${maxScore}):`;
 
                     return `
@@ -498,6 +500,7 @@ const JudgeView = {
                                 data-max-score="${maxScore}"
                                 data-is-penalty="${isPenalty}"
                                 class="score-input"
+                                placeholder="${isPenalty ? '–' : ''}"
                                 onchange="JudgeView.updateScore('${criterion.id}', this.value)"
                                 oninput="JudgeView.updateScore('${criterion.id}', this.value)"
                             >
@@ -710,7 +713,14 @@ const JudgeView = {
             criterion => this.currentScores[criterion.id]
         );
 
-        document.getElementById('judge-total-score').textContent = total;
+        // The visible denominator: every point that could be awarded. Penalty
+        // criteria are subtracted, so they are not part of it.
+        const maxTotal = (this.currentCriteria || []).reduce((sum, criterion) =>
+            DataManager.isPenaltyCriterion(criterion) ? sum : sum + (criterion.max_score || 0), 0);
+
+        const totalElement = document.getElementById('judge-total-score');
+        totalElement.textContent = total;
+        totalElement.dataset.max = maxTotal;
     },
 
     async addScore() {
@@ -1136,7 +1146,7 @@ const JudgeView = {
             }
 
             if (scoredStudents.length === 0) {
-                container.innerHTML = '<p class="empty-message">No students scored yet.</p>';
+                container.innerHTML = '<p class="empty-message">No score saved yet — press Add score to save this student.</p>';
                 // Update Submit All button state
                 await this.updateSubmitAllButtonState();
                 return;
@@ -1150,7 +1160,7 @@ const JudgeView = {
                 }
                 const total = DataManager.totalForJudge(criteria, c => scoreById[c.id]);
 
-                const viewNotesButton = `<button class="btn btn-sm btn-primary" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')" style="margin-top: 10px;">View Notes</button>`;
+                const viewNotesButton = `<button class="btn btn-sm btn-quiet" onclick="JudgeView.showNotesModal('${student.id}', '${student.name}')">Notes</button>`;
 
                 return `
                     <div class="scored-student-card ${submitted ? 'submitted' : 'draft'}">
