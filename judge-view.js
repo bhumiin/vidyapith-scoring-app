@@ -127,6 +127,9 @@ const JudgeView = {
             const groups = await DataManager.getGroups();
             const judgeGroupIds = await SupabaseService.getJudgeGroups(user.id);
             const judgeGroups = groups.filter(g => judgeGroupIds.includes(g.id));
+            // id -> name, used by the confirmation prompt when picking a grade
+            this.gradeNames = {};
+            judgeGroups.forEach(g => { this.gradeNames[g.id] = g.name; });
             const groupsInfoElement = document.getElementById('judge-groups-info');
             const topicsContainerElement = document.getElementById('judge-topics-info');
             
@@ -253,6 +256,24 @@ const JudgeView = {
     },
 
     async selectGrade(groupId) {
+        // Confirm before choosing/switching: scores entered against the wrong
+        // grade are the kind of mistake that only shows up at submission time.
+        if (groupId !== this.selectedGradeId) {
+            const next = (this.gradeNames && this.gradeNames[groupId]) || 'this grade';
+            const prev = this.selectedGradeId && this.gradeNames
+                ? this.gradeNames[this.selectedGradeId]
+                : null;
+            const question = prev
+                ? `Switch from Grade ${prev} to Grade ${next}?`
+                : `Enter scores for Grade ${next}?`;
+            const confirmed = confirm(
+                `${question}\n\nOnly students from Grade ${next} will be listed.`
+            );
+            if (!confirmed) {
+                return;   // keep whatever was selected before
+            }
+        }
+
         // Set selected grade first
         this.selectedGradeId = groupId;
         this.updateContentVisibility(true);
