@@ -119,11 +119,11 @@ const SupabaseService = {
      * short-lived token that the client sends on every later request.
      * @returns {Promise<{ok: boolean, token?: string, expires_at?: string, user?: object, error?: string}>}
      */
-    async login(username, password, role) {
+    async login(username, password) {
         const client = createSupabaseClient(null);  // login itself is anonymous
+        // Two arguments only: the database resolves the role from the username.
         const { data, error } = await client.rpc('login', {
             p_username: username,
-            p_role: role,
             p_password: password
         });
         if (error) throw sqlError(error, 'Could not reach the database');

@@ -12,15 +12,16 @@ const AuthManager = {
     SESSION_KEY: (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.sessionKey) || 'vidyapith_session',
 
     /**
-     * Authenticate a user
+     * Authenticate a user. No role is passed in: the database knows which
+     * credential the username belongs to and returns that row's role, which is
+     * what App.routeToView() uses to pick the screen.
      * @param {string} username - Username
      * @param {string} password - Plain text password
-     * @param {string} role - User role (judge, superjudge, admin)
      * @returns {Promise<{success: boolean, user?: object, error?: string}>}
      */
-    async login(username, password, role) {
+    async login(username, password) {
         try {
-            const result = await SupabaseService.login(username, password, role);
+            const result = await SupabaseService.login(username, password);
 
             if (!result || !result.ok) {
                 return {

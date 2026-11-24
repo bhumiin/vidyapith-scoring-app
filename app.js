@@ -20,15 +20,16 @@ const App = {
     async handleLogin() {
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
-        const role = document.getElementById('role').value;
 
-        if (!username || !password || !role) {
-            this.showLoginError('Please fill in all fields');
+        if (!username || !password) {
+            this.showLoginError('Please enter your username and password');
             return;
         }
 
         try {
-            const result = await AuthManager.login(username, password, role);
+            // The role is not chosen here: Postgres resolves it from the
+            // credential and the session carries whatever it returns.
+            const result = await AuthManager.login(username, password);
             if (result.success) {
                 this.showLoginError('');
                 // Force page reload to clear all cached state and reinitialize views
