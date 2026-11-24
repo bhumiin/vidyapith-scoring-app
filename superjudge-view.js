@@ -664,7 +664,7 @@ const SuperJudgeView = {
             document.body.appendChild(modal);
         } catch (error) {
             console.error('Error editing judge scores:', error);
-            alert('Error loading scores for editing. Please try again.');
+            UI.toast('Error loading scores for editing. Please try again.', { type: 'error' });;
         }
     },
 
@@ -683,7 +683,7 @@ const SuperJudgeView = {
         const score = parseInt(value);
         
         if (isNaN(score) || score < minScore || score > maxScore) {
-            alert(`Score must be between ${minScore} and ${maxScore}`);
+            UI.toast(`Score must be between ${minScore} and ${maxScore}`, { type: 'error' });;
             inputElement.value = '';
             return;
         }
@@ -719,7 +719,7 @@ const SuperJudgeView = {
             await this.renderStudents();
         } catch (error) {
             console.error('Error saving edit scores:', error);
-            alert('Error saving scores. Please try again.');
+            UI.toast('Error saving scores. Please try again.', { type: 'error' });;
         }
     },
 
@@ -929,13 +929,13 @@ const SuperJudgeView = {
 
     async assignSelectedJudgesToGroup(groupId) {
         if (!groupId) {
-            alert('Please select a grade first');
+            UI.toast('Please select a grade first', { type: 'error' });;
             return;
         }
         
         const checkboxes = document.querySelectorAll('#superjudge-judge-checkbox-list .judge-checkbox:checked');
         if (checkboxes.length === 0) {
-            alert('Please select at least one judge');
+            UI.toast('Please select at least one judge', { type: 'error' });;
             return;
         }
         
@@ -954,7 +954,7 @@ const SuperJudgeView = {
             await this.renderGroupAssignmentUI();
         } catch (error) {
             console.error('Error assigning judges to group:', error);
-            alert('Error assigning judges. Please try again.');
+            UI.toast('Error assigning judges. Please try again.', { type: 'error' });;
         }
     },
 
@@ -975,7 +975,7 @@ const SuperJudgeView = {
     async addGroup() {
         const name = document.getElementById('superjudge-group-name').value.trim();
         if (!name) {
-            alert('Please enter a grade name');
+            UI.toast('Please enter a grade name', { type: 'error' });;
             return;
         }
 
@@ -986,7 +986,7 @@ const SuperJudgeView = {
             await this.renderGradeButtons();
         } catch (error) {
             console.error('Error adding group:', error);
-            alert('Error creating group. Please try again.');
+            UI.toast('Error creating group. Please try again.', { type: 'error' });;
         }
     },
 
@@ -1029,14 +1029,24 @@ const SuperJudgeView = {
             await this.renderGroupAssignmentUI();
         } catch (error) {
             console.error('Error removing judge from group:', error);
-            alert('Error removing judge. Please try again.');
+            UI.toast('Error removing judge. Please try again.', { type: 'error' });;
         }
     },
 
     async deleteGroup(id) {
-        if (confirm('Are you sure you want to delete this grade? All student assignments will be removed.')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Delete this grade?',
+            message: 'Its topics and judge assignments are removed. A grade that still has students cannot be deleted.',
+            confirmLabel: 'Delete grade',
+            danger: true
+        });
+        if (confirmed) {
             try {
-                await GroupManager.deleteGroup(id);
+                const removed = await GroupManager.deleteGroup(id);
+                if (!removed) {
+                    UI.toast('Cannot delete this grade — move or remove its students first.', { type: 'error' });
+                    return;
+                }
                 // Clear selection if deleted group was selected
                 if (this.selectedGroupIdForManagement === id) {
                     this.selectedGroupIdForManagement = null;
@@ -1046,7 +1056,7 @@ const SuperJudgeView = {
                 await this.renderStudents();
             } catch (error) {
                 console.error('Error deleting group:', error);
-                alert('Error deleting group. Please try again.');
+                UI.toast('Error deleting group. Please try again.', { type: 'error' });;
             }
         }
     },

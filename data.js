@@ -596,14 +596,14 @@ const DataManager = {
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error exporting to CSV:', error);
-            alert('Error exporting to CSV. Please try again.');
+            UI.toast('Error exporting to CSV. Please try again.', { type: 'error' });;
         }
     },
 
     async exportToExcel() {
         try {
             if (typeof XLSX === 'undefined') {
-                alert('Excel export library not loaded. Please refresh the page.');
+                UI.toast('Excel export library not loaded. Please refresh the page.', { type: 'error' });;
                 return;
             }
 
@@ -692,7 +692,7 @@ const DataManager = {
             XLSX.writeFile(wb, `vidyapith_scores_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (error) {
             console.error('Error exporting to Excel:', error);
-            alert('Error exporting to Excel. Please try again.');
+            UI.toast('Error exporting to Excel. Please try again.', { type: 'error' });;
         }
     },
 
@@ -716,7 +716,7 @@ const DataManager = {
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error exporting config:', error);
-            alert('Error exporting configuration. Please try again.');
+            UI.toast('Error exporting configuration. Please try again.', { type: 'error' });;
         }
     },
 

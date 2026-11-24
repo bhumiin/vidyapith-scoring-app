@@ -376,6 +376,39 @@ const UI = (function () {
         return modal(settings);
     }
 
+    /**
+     * One button, no question — for something the judge only has to read.
+     * Resolves true when dismissed.
+     */
+    function alertDialog(options) {
+        return modal(Object.assign({}, options || {}, { cancelLabel: null }));
+    }
+
+    /**
+     * The same dialog with a list in the body, for "these three things are
+     * missing" instead of a paragraph with newlines in it.
+     * @param {{title: string, message?: string, items: string[], confirmLabel?: string}} options
+     */
+    function list(options) {
+        options = options || {};
+        return modal({
+            title: options.title,
+            message: options.message,
+            confirmLabel: options.confirmLabel || 'OK',
+            cancelLabel: null,
+            render: function (body) {
+                var ul = document.createElement('ul');
+                ul.className = 'vp-modal__list';
+                (options.items || []).forEach(function (item) {
+                    var li = document.createElement('li');
+                    li.textContent = item;
+                    ul.appendChild(li);
+                });
+                body.appendChild(ul);
+            }
+        });
+    }
+
     function close(result) {
         finish(result);
     }
@@ -390,6 +423,8 @@ const UI = (function () {
             open: modal,
             confirm: confirm,
             prompt: prompt,
+            alert: alertDialog,
+            list: list,
             close: close,
             isOpen: isOpen
         }

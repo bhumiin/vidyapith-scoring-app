@@ -120,12 +120,12 @@ const SetupView = {
         const grade = gradeInput.value.trim();
 
         if (!name) {
-            alert('Please enter a student name');
+            UI.toast('Please enter a student name', { type: 'error' });;
             return;
         }
 
         if (!grade) {
-            alert('Please enter a grade');
+            UI.toast('Please enter a grade', { type: 'error' });;
             return;
         }
 
@@ -156,7 +156,7 @@ const SetupView = {
             await this.populateGradeList();
         } catch (error) {
             console.error('Error adding student manually:', error);
-            alert('Error adding student. Please try again.');
+            UI.toast('Error adding student. Please try again.', { type: 'error' });;
         }
     },
 
@@ -185,7 +185,7 @@ const SetupView = {
             await this.renderStudents();
         } catch (error) {
             console.error('Error adding students bulk:', error);
-            alert('Error adding students. Please try again.');
+            UI.toast('Error adding students. Please try again.', { type: 'error' });;
         }
     },
 
@@ -241,13 +241,19 @@ const SetupView = {
     },
 
     async removeStudent(id) {
-        if (confirm('Are you sure you want to remove this student?')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Remove this student?',
+            message: 'Their scores, notes and submission go with them. This cannot be undone.',
+            confirmLabel: 'Remove',
+            danger: true
+        });
+        if (confirmed) {
             try {
                 await DataManager.removeStudent(id);
                 await this.renderStudents();
             } catch (error) {
                 console.error('Error removing student:', error);
-                alert('Error removing student. Please try again.');
+                UI.toast('Error removing student. Please try again.', { type: 'error' });;
             }
         }
     },
@@ -259,7 +265,7 @@ const SetupView = {
         const password = document.getElementById('judge-password').value.trim();
 
         if (!name || !username || !password) {
-            alert('Please fill in all fields');
+            UI.toast('Please fill in all fields', { type: 'error' });;
             return;
         }
 
@@ -271,7 +277,7 @@ const SetupView = {
             await this.renderJudges();
         } catch (error) {
             console.error('Error adding judge:', error);
-            alert('Error adding judge. Please try again.');
+            UI.toast('Error adding judge. Please try again.', { type: 'error' });;
         }
     },
 
@@ -286,7 +292,13 @@ const SetupView = {
     },
 
     async removeJudge(id) {
-        if (confirm('Are you sure you want to remove this judge?')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Remove this judge?',
+            message: 'Their login, grade assignments and every score they entered are removed.',
+            confirmLabel: 'Remove',
+            danger: true
+        });
+        if (confirmed) {
             try {
                 await DataManager.removeJudge(id);
                 // Clear selection if deleted judge was selected
@@ -296,7 +308,7 @@ const SetupView = {
                 await this.renderJudges();
             } catch (error) {
                 console.error('Error removing judge:', error);
-                alert('Error removing judge. Please try again.');
+                UI.toast('Error removing judge. Please try again.', { type: 'error' });;
             }
         }
     },
@@ -502,13 +514,13 @@ const SetupView = {
 
     async assignSelectedGroupsToJudge(judgeId) {
         if (!judgeId) {
-            alert('Please select a judge first');
+            UI.toast('Please select a judge first', { type: 'error' });;
             return;
         }
         
         const checkboxes = document.querySelectorAll('.group-checkbox:checked');
         if (checkboxes.length === 0) {
-            alert('Please select at least one grade');
+            UI.toast('Please select at least one grade', { type: 'error' });;
             return;
         }
         
@@ -546,7 +558,7 @@ const SetupView = {
         const password = document.getElementById('superjudge-password').value.trim();
 
         if (!name || !username || !password) {
-            alert('Please fill in all fields');
+            UI.toast('Please fill in all fields', { type: 'error' });;
             return;
         }
 
@@ -579,7 +591,13 @@ const SetupView = {
     },
 
     async removeSuperJudge(id) {
-        if (confirm('Are you sure you want to remove this super judge?')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Remove this super judge?',
+            message: 'Their login stops working immediately.',
+            confirmLabel: 'Remove',
+            danger: true
+        });
+        if (confirmed) {
             await DataManager.removeSuperJudge(id);
             await this.renderSuperJudges();
         }
@@ -589,7 +607,7 @@ const SetupView = {
     async addCriterion() {
         const name = document.getElementById('criterion-name').value.trim();
         if (!name) {
-            alert('Please enter a criterion name');
+            UI.toast('Please enter a criterion name', { type: 'error' });;
             return;
         }
 
@@ -619,7 +637,13 @@ const SetupView = {
     },
 
     async removeCriterion(id) {
-        if (confirm('Are you sure you want to remove this criterion?')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Remove this criterion?',
+            message: 'Every score recorded against it is removed. This cannot be undone.',
+            confirmLabel: 'Remove',
+            danger: true
+        });
+        if (confirmed) {
             await DataManager.removeCriterion(id);
             await this.renderCriteria();
         }
@@ -632,12 +656,12 @@ const SetupView = {
         const groupId = document.getElementById('topic-grade-select').value;
 
         if (!name) {
-            alert('Please enter a topic name');
+            UI.toast('Please enter a topic name', { type: 'error' });;
             return;
         }
 
         if (!groupId) {
-            alert('Please select a grade');
+            UI.toast('Please select a grade', { type: 'error' });;
             return;
         }
 
@@ -653,7 +677,7 @@ const SetupView = {
             }
         } catch (error) {
             console.error('Error adding topic:', error);
-            alert('Error adding topic. Please try again.');
+            UI.toast('Error adding topic. Please try again.', { type: 'error' });;
         }
     },
 
@@ -831,7 +855,13 @@ const SetupView = {
     },
 
     async removeTopic(id) {
-        if (confirm('Are you sure you want to remove this topic?')) {
+        const confirmed = await UI.modal.confirm({
+            title: 'Remove this topic?',
+            message: 'Judges will no longer see it. This cannot be undone.',
+            confirmLabel: 'Remove',
+            danger: true
+        });
+        if (confirmed) {
             try {
                 await DataManager.removeTopic(id);
                 // Refresh the topics list if a grade is selected
@@ -843,7 +873,7 @@ const SetupView = {
                 }
             } catch (error) {
                 console.error('Error removing topic:', error);
-                alert('Error removing topic. Please try again.');
+                UI.toast('Error removing topic. Please try again.', { type: 'error' });;
             }
         }
     },
@@ -1008,13 +1038,13 @@ const SetupView = {
 
     async assignSelectedJudgesToGroup(groupId) {
         if (!groupId) {
-            alert('Please select a grade first');
+            UI.toast('Please select a grade first', { type: 'error' });;
             return;
         }
         
         const checkboxes = document.querySelectorAll('.judge-checkbox:checked');
         if (checkboxes.length === 0) {
-            alert('Please select at least one judge');
+            UI.toast('Please select at least one judge', { type: 'error' });;
             return;
         }
         
@@ -1062,7 +1092,7 @@ const SetupView = {
         const select = document.getElementById(`student-select-${groupId}`);
         const studentId = select.value;
         if (!studentId) {
-            alert('Please select a student');
+            UI.toast('Please select a student', { type: 'error' });;
             return;
         }
 
@@ -1093,8 +1123,18 @@ const SetupView = {
     },
 
     async deleteGroup(id) {
-        if (confirm('Are you sure you want to delete this grade? All student assignments will be removed.')) {
-            await GroupManager.deleteGroup(id);
+        const confirmed = await UI.modal.confirm({
+            title: 'Delete this grade?',
+            message: 'Its topics and judge assignments are removed. A grade that still has students cannot be deleted.',
+            confirmLabel: 'Delete grade',
+            danger: true
+        });
+        if (confirmed) {
+            const removed = await GroupManager.deleteGroup(id);
+            if (!removed) {
+                UI.toast('Cannot delete this grade — move or remove its students first.', { type: 'error' });
+                return;
+            }
             // Clear selection if deleted group was selected
             if (this.selectedGroupId === id) {
                 this.selectedGroupId = null;
@@ -1115,7 +1155,7 @@ const SetupView = {
         const fileInput = document.getElementById('import-file');
         const file = fileInput.files[0];
         if (!file) {
-            alert('Please select a file');
+            UI.toast('Please select a file', { type: 'error' });;
             return;
         }
 
@@ -1123,10 +1163,10 @@ const SetupView = {
         reader.onload = (e) => {
             const success = DataManager.importConfig(e.target.result);
             if (success) {
-                alert('Configuration imported successfully!');
+                UI.toast('Configuration imported successfully!', { type: 'success' });;
                 this.render();
             } else {
-                alert('Error importing configuration. Please check the file format.');
+                UI.toast('Error importing configuration. Please check the file format.', { type: 'error' });;
             }
         };
         reader.readAsText(file);

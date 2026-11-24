@@ -176,7 +176,7 @@ const JudgeView = {
             await this.updateSubmitAllButtonState();
         } catch (error) {
             console.error('Error rendering judge view:', error);
-            alert('Error loading judge view. Please refresh the page.');
+            UI.toast('Error loading judge view. Please refresh the page.', { type: 'error' });;
             // Still update button state on error
             await this.updateSubmitAllButtonState();
         }
@@ -266,9 +266,12 @@ const JudgeView = {
             const question = prev
                 ? `Switch from Grade ${prev} to Grade ${next}?`
                 : `Enter scores for Grade ${next}?`;
-            const confirmed = confirm(
-                `${question}\n\nOnly students from Grade ${next} will be listed.`
-            );
+            const confirmed = await UI.modal.confirm({
+                title: question,
+                message: `Only students from Grade ${next} will be listed.`,
+                confirmLabel: prev ? 'Switch grade' : 'Enter scores',
+                cancelLabel: 'Cancel'
+            });
             if (!confirmed) {
                 return;   // keep whatever was selected before
             }
@@ -554,7 +557,7 @@ const JudgeView = {
             });
         } catch (error) {
             console.error('Error selecting student:', error);
-            alert('Error loading student. Please try again.');
+            UI.toast('Error loading student. Please try again.', { type: 'error' });;
         }
     },
 
@@ -571,7 +574,7 @@ const JudgeView = {
         // If min/max not found, this is an error - should not happen
         if (minScore === null || maxScore === null || isNaN(minScore) || isNaN(maxScore)) {
             console.error(`Score range not found for criterion ${criterionId}`);
-            alert('Error: Score range not configured for this criterion. Please refresh the page.');
+            UI.toast('Error: Score range not configured for this criterion. Please refresh the page.', { type: 'error' });;
             return;
         }
         
@@ -602,7 +605,7 @@ const JudgeView = {
                 inputElement.value = '';
                 inputElement.classList.add('invalid-score');
                 inputElement.focus();
-                alert(`Score must be between ${minScore} and ${maxScore}. Please enter a valid score.`);
+                UI.toast(`Score must be between ${minScore} and ${maxScore}. Please enter a valid score.`, { type: 'error' });;
             }
             this.calculateTotal();
             this.updateButtonStates().catch(error => {
@@ -712,7 +715,7 @@ const JudgeView = {
 
     async addScore() {
         if (!this.currentStudentId) {
-            alert('Please select a student first');
+            UI.toast('Please select a student first', { type: 'error' });;
             return;
         }
 
@@ -724,7 +727,7 @@ const JudgeView = {
                 return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
             }).filter(Boolean);
             
-            alert(`Please enter valid scores for all criteria before adding score.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            UI.toast(`Fix these scores first: ${invalidInputs.join(', ')}`, { type: 'error' });
             
             // Focus on first invalid input
             if (validation.invalidCriteria.length > 0) {
@@ -769,8 +772,15 @@ const JudgeView = {
                     }
                 });
 
-                // Show error with missing fields
-                alert(`Please enter scores for all required criteria before adding score.\n\nMissing scores:\n${missingCriteriaNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`);
+                // A list does not belong in a toast: name every missing criterion
+                const studentLabel = (document.getElementById('current-student-name') || {}).textContent
+                    || 'This student';
+                await UI.modal.list({
+                    title: 'Scores still missing',
+                    message: `${studentLabel} still needs a score in:`,
+                    items: missingCriteriaNames,
+                    confirmLabel: 'Got it'
+                });
 
                 // Focus and scroll to first missing field
                 if (missingScores.length > 0) {
@@ -811,12 +821,14 @@ const JudgeView = {
                 await DataManager.setNote(this.currentStudentId, user.id, this.currentNotes);
             }
 
-            alert('Score added successfully!');
+            const runningTotal = document.getElementById('judge-total-score');
+            UI.toast('Score added · ' + (runningTotal ? runningTotal.textContent : '0') + ' / 40',
+                { type: 'success' });
             await this.renderScoredStudents();
             // updateSubmitAllButtonState is called inside renderScoredStudents
         } catch (error) {
             console.error('Error adding score:', error);
-            alert('Error adding score. Please try again.');
+            UI.toast('Error adding score. Please try again.', { type: 'error' });;
         }
     },
 
@@ -827,7 +839,7 @@ const JudgeView = {
 
             // Check if a grade is selected
             if (!this.selectedGradeId) {
-                alert('Please select a grade first');
+                UI.toast('Please select a grade first', { type: 'error' });;
                 return;
             }
 
@@ -836,7 +848,7 @@ const JudgeView = {
             students = students.filter(s => s.group_id === this.selectedGradeId);
 
             if (students.length === 0) {
-                alert('No students assigned to this grade');
+                UI.toast('No students assigned to this grade', { type: 'error' });;
                 return;
             }
 
@@ -892,11 +904,12 @@ const JudgeView = {
 
             // If any students are pending, show error
             if (pendingStudents.length > 0) {
-                const pendingList = pendingStudents.map((item, index) => 
-                    `${index + 1}. ${item.student.name} (${item.reason})`
-                ).join('\n');
-
-                alert(`Cannot submit all scores. The following students are pending scoring:\n\n${pendingList}`);
+                await UI.modal.list({
+                    title: 'Not every student is finished',
+                    message: 'Finish these before submitting the whole grade:',
+                    items: pendingStudents.map(item => `${item.student.name} — ${item.reason}`),
+                    confirmLabel: 'Got it'
+                });
                 return;
             }
 
@@ -914,9 +927,14 @@ const JudgeView = {
             }
 
             if (failures.length > 0) {
-                alert(`Submitted ${submittedCount} of ${students.length} student(s).\n\nThese failed:\n${failures.join('\n')}`);
+                await UI.modal.list({
+                    title: 'Some students did not submit',
+                    message: `${submittedCount} of ${students.length} submitted. These failed:`,
+                    items: failures,
+                    confirmLabel: 'Close'
+                });
             } else {
-                alert(`Successfully submitted scores for ${submittedCount} student(s)!`);
+                UI.toast(`Successfully submitted scores for ${submittedCount} student(s)!`, { type: 'success' });;
             }
             await this.renderScoredStudents();
             
@@ -929,13 +947,13 @@ const JudgeView = {
             }
         } catch (error) {
             console.error('Error submitting all scores:', error);
-            alert('Error submitting all scores. Please try again.');
+            UI.toast('Error submitting all scores. Please try again.', { type: 'error' });;
         }
     },
 
     async submitScores() {
         if (!this.currentStudentId) {
-            alert('Please select a student first');
+            UI.toast('Please select a student first', { type: 'error' });;
             return;
         }
 
@@ -947,7 +965,7 @@ const JudgeView = {
                 return input ? input.closest('.criterion-item')?.querySelector('label')?.textContent : 'Unknown';
             }).filter(Boolean);
             
-            alert(`Please enter valid scores for all criteria before submitting.\n\nInvalid scores found in: ${invalidInputs.join(', ')}`);
+            UI.toast(`Fix these scores first: ${invalidInputs.join(', ')}`, { type: 'error' });
             
             // Focus on first invalid input
             if (validation.invalidCriteria.length > 0) {
@@ -992,8 +1010,14 @@ const JudgeView = {
                     }
                 });
 
-                // Show alert with missing fields
-                alert(`Please enter scores for all required criteria before submitting.\n\nMissing scores:\n${missingCriteriaNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`);
+                const studentLabel = (document.getElementById('current-student-name') || {}).textContent
+                    || 'This student';
+                await UI.modal.list({
+                    title: 'Scores still missing',
+                    message: `${studentLabel} still needs a score in:`,
+                    items: missingCriteriaNames,
+                    confirmLabel: 'Got it'
+                });
 
                 // Focus and scroll to first missing field
                 if (missingScores.length > 0) {
@@ -1038,12 +1062,12 @@ const JudgeView = {
             // Mark as submitted
             await DataManager.submitScores(this.currentStudentId, user.id);
 
-            alert('Scores submitted successfully!');
+            UI.toast('Scores submitted successfully!', { type: 'success' });;
             await this.selectStudent(this.currentStudentId); // Refresh to show locked state
             await this.renderScoredStudents();
         } catch (error) {
             console.error('Error submitting scores:', error);
-            alert('Error submitting scores. Please try again.');
+            UI.toast('Error submitting scores. Please try again.', { type: 'error' });;
         }
     },
 
@@ -1300,7 +1324,7 @@ const JudgeView = {
             modal.style.display = 'flex';
         } catch (error) {
             console.error('Error showing notes modal:', error);
-            alert('Error loading notes. Please try again.');
+            UI.toast('Error loading notes. Please try again.', { type: 'error' });;
         }
     },
 
@@ -1323,7 +1347,7 @@ const JudgeView = {
             const modalTextarea = document.getElementById('notes-modal-textarea');
 
             if (!studentId) {
-                alert('Error: Student ID not found');
+                UI.toast('Error: Student ID not found', { type: 'error' });;
                 return;
             }
 
@@ -1342,12 +1366,12 @@ const JudgeView = {
                 }
             }
 
-            alert('Notes saved successfully!');
+            UI.toast('Notes saved successfully!', { type: 'success' });;
             this.hideNotesModal();
             await this.renderScoredStudents();
         } catch (error) {
             console.error('Error saving notes:', error);
-            alert('Error saving notes. Please try again.');
+            UI.toast('Error saving notes. Please try again.', { type: 'error' });;
         }
     }
 };

@@ -1830,6 +1830,19 @@ body {
     box-shadow: var(--focus-ring);
 }
 
+.vp-modal__list {
+    margin: 0;
+    padding-left: var(--space-5);
+    max-height: 40vh;
+    overflow-y: auto;
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
+}
+
+.vp-modal__list li + li {
+    margin-top: var(--space-1);
+}
+
 .vp-modal__error {
     margin-top: var(--space-2);
     color: var(--color-danger);
