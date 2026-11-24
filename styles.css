@@ -5049,13 +5049,13 @@ body[data-view="judge"] .view-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-        "logo  logo"
-        "name  grades"
+        "logo logo"
+        "name name"
         "topic topic";
     align-items: center;
     gap: var(--space-3) var(--space-4);
     padding: var(--space-4) var(--space-4) 0;
-    text-align: left;
+    text-align: center;
 }
 
 body[data-view="judge"] .view-header .logo {
@@ -5064,16 +5064,19 @@ body[data-view="judge"] .view-header .logo {
     margin: 0;
 }
 
+/* the name is centred on the card; the pills ride on the same row, pinned right */
 body[data-view="judge"] .judge-name-display {
     grid-area: name;
-    justify-self: start;
+    justify-self: center;
     margin: 0;
     font-size: var(--text-xl);
+    text-align: center;
 }
 
 body[data-view="judge"] .judge-grades-display {
-    grid-area: grades;
+    grid-area: name;
     justify-self: end;
+    align-self: center;
     margin: 0;
 }
 
@@ -5124,6 +5127,13 @@ body[data-view="judge"] .judge-topics-display .topics-list li {
     body[data-view="judge"] .judge-name-display,
     body[data-view="judge"] .judge-grades-display {
         justify-self: center;
+    }
+
+    /* on a phone the pills get their own row under the name */
+    body[data-view="judge"] .judge-grades-display {
+        grid-area: grades;
+        justify-self: center;
+        margin-bottom: var(--space-1);
     }
 
     body[data-view="judge"] .judge-topics-display .topics-list li {
