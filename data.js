@@ -101,6 +101,10 @@ const DataManager = {
         this._cache.judges = judges;
     },
 
+    async setPassword(role, id, password) {
+        return SupabaseService.setPassword(role, id, password);
+    },
+
     async addJudge(name, username, password) {
         try {
             const newJudge = await SupabaseService.addJudge(name, username, password);

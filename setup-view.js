@@ -46,6 +46,12 @@ const SetupView = {
         document.getElementById('assign-groups-btn').addEventListener('click', () => {
             this.assignSelectedGroupsToJudge(this.selectedJudgeId).catch(error => console.error('Error assigning groups:', error));
         });
+        const resetJudgeBtn = document.getElementById('reset-judge-password');
+        if (resetJudgeBtn) {
+            resetJudgeBtn.addEventListener('click', () => {
+                this.resetPassword('judge', this.selectedJudgeId).catch(error => console.error('Error resetting password:', error));
+            });
+        }
         document.getElementById('select-all-groups').addEventListener('change', (e) => {
             const checkboxes = document.querySelectorAll('.group-checkbox:not(:disabled)');
             checkboxes.forEach(cb => cb.checked = e.target.checked);
@@ -586,6 +592,48 @@ const SetupView = {
         await this.renderSuperJudges();
     },
 
+    /**
+     * Give an existing account a new password. admin_set_password() clears the
+     * failed-attempt counter and any lockout, so a judge who got themselves
+     * locked out is fixed by the same action.
+     *
+     * The password is typed by the admin and read out to the judge - the app
+     * never shows a stored password, because only a bcrypt hash is kept.
+     */
+    async resetPassword(role, id) {
+        if (!id) {
+            UI.toast('Pick a judge first.', { type: 'error' });
+            return;
+        }
+
+        const judges = role === 'judge'
+            ? (await DataManager.getJudges() || [])
+            : (await DataManager.getSuperJudges() || []);
+        const person = judges.find(j => j.id === id);
+        const name = person ? person.name : (role === 'judge' ? 'this judge' : 'this super judge');
+
+        const password = await UI.modal.prompt({
+            title: role === 'judge' ? `Reset ${name}'s password?` : `Reset ${name}'s password?`,
+            message: 'The old password stops working immediately, so read the new one out to them.',
+            input: {
+                label: 'New password',
+                placeholder: 'At least 4 characters',
+                validate: value => (value || '').length >= 4 ? '' : 'Use at least 4 characters'
+            },
+            confirmLabel: 'Set new password',
+            danger: true
+        });
+        if (password === null) return;
+
+        try {
+            await DataManager.setPassword(role, id, password);
+            UI.toast(`Password updated for ${name}.`, { type: 'success' });
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            UI.toast(error.message || 'Could not reset the password.', { type: 'error' });
+        }
+    },
+
     async renderSuperJudges() {
         const superJudges = await DataManager.getSuperJudges() || [];
         document.getElementById('superjudge-count').textContent = superJudges.length;
@@ -602,6 +650,7 @@ const SetupView = {
                     <strong>${superJudge.name}</strong>
                     <span>Username: ${superJudge.username}</span>
                 </div>
+                <button class="btn btn-quiet btn-sm" onclick="SetupView.resetPassword('superjudge', '${superJudge.id}')">Reset password</button>
                 <button class="btn btn-danger btn-sm" onclick="SetupView.removeSuperJudge('${superJudge.id}')">Remove</button>
             </div>
         `).join('');
