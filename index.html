@@ -286,9 +286,21 @@
 
             <!-- Scores Tab -->
             <div id="scores-tab" class="tab-content active">
+                <div class="sj-head">
+                    <div class="sj-head__t">
+                        <h2 id="sj-title">Standings</h2>
+                        <div class="sj-meta" id="sj-meta">Pick a grade to see the standings.</div>
+                    </div>
+                </div>
                 <div id="grade-buttons-container" class="grade-buttons-container"></div>
                 <div id="superjudge-topics-display" class="superjudge-topics-display"></div>
-                <div id="superjudge-students-list" class="students-list"></div>
+                <div id="superjudge-stats" class="sj-stats"></div>
+                <div class="sj-list">
+                    <div class="sj-lhead">
+                        <span>#</span><span>Student</span><span>Average</span><span>Judges</span><span>Status</span>
+                    </div>
+                    <div id="superjudge-students-list" class="sj-rows"></div>
+                </div>
             </div>
 
             <!-- Group Management Tab -->

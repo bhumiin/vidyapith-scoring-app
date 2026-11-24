@@ -120,12 +120,14 @@ const SuperJudgeView = {
             const buttonsHTML = sortedGroups.map(group => {
                 const isActive = this.selectedGradeId === group.id;
                 return `
-                    <button 
-                        class="grade-button ${isActive ? 'active' : ''}" 
+                    <button
+                        class="grade-button ${isActive ? 'active' : ''}"
                         data-grade-id="${group.id}"
+                        title="Grade ${group.name}"
+                        aria-label="Grade ${group.name}"
                         onclick="SuperJudgeView.selectGrade('${group.id}')"
                     >
-                        Grade ${group.name}
+                        ${group.name}
                     </button>
                 `;
             }).join('');
@@ -194,13 +196,65 @@ const SuperJudgeView = {
             }
 
             let students = await DataManager.getStudents();
-            
+
             // Filter by selected grade
             students = students.filter(s => s.group_id === this.selectedGradeId);
+
+            const groups = await DataManager.getGroups();
+            const group = groups.find(g => g.id === this.selectedGradeId);
+            const titleEl = document.getElementById('sj-title');
+            if (titleEl) titleEl.textContent = group ? `Grade ${group.name} standings` : 'Standings';
 
             await this.renderStudentsList(students);
         } catch (error) {
             console.error('Error rendering students:', error);
+        }
+    },
+
+    /**
+     * The three numbers a super judge reads first: who leads, what the grade
+     * averages, and how much of the round is final.
+     */
+    renderSummary(rows, maxTotal) {
+        const host = document.getElementById('superjudge-stats');
+        const meta = document.getElementById('sj-meta');
+        if (!host) return;
+
+        const finished = rows.filter(row => row.allSubmitted && !row.absent);
+        const scorable = rows.filter(row => !row.absent);
+        const leader = finished[0] || null;
+        const gradeAvg = finished.length
+            ? finished.reduce((sum, row) => sum + row.avgScore, 0) / finished.length
+            : null;
+
+        const stat = (label, value, unit, detail, cls) => `
+            <div class="sj-stat ${cls || ''}">
+                <span class="sj-stat__l">${label}</span>
+                <span class="sj-stat__v">${value}${unit ? `<small>${unit}</small>` : ''}</span>
+                <span class="sj-stat__d">${detail}</span>
+            </div>`;
+
+        const judgeSlots = rows.reduce((sum, row) => sum + row.scoringJudges.length, 0);
+        const judgeDone = rows.reduce((sum, row) =>
+            sum + row.judgeScores.filter(js => js.submitted).length, 0);
+        const absentCount = rows.length - scorable.length;
+
+        host.innerHTML = [
+            leader ? stat('Leader', leader.avgScore.toFixed(2), `/${maxTotal}`, leader.student.name, 'is-lead')
+                   : stat('Leader', '—', '', 'No student is final yet', 'is-quiet'),
+            stat('Grade average', gradeAvg === null ? '—' : gradeAvg.toFixed(2), gradeAvg === null ? '' : `/${maxTotal}`,
+                finished.length ? `across ${finished.length} ${finished.length === 1 ? 'student' : 'students'}` : 'nothing final yet', ''),
+            stat('Scores in', `${judgeDone}`, ` of ${judgeSlots}`,
+                absentCount ? `${absentCount} absent` : 'judge submissions', '')
+        ].join('');
+
+        if (meta) {
+            const pending = scorable.length - finished.length;
+            const parts = [`${rows.length} ${rows.length === 1 ? 'student' : 'students'}`,
+                           `${finished.length} final`];
+            if (pending) parts.push(`${pending} in progress`);
+            if (absentCount) parts.push(`${absentCount} absent`);
+            meta.textContent = parts.join(' · ');
         }
     },
 
@@ -356,7 +410,9 @@ const SuperJudgeView = {
                         return {
                             criterion: criterion.name,
                             criterionId: criterion.id,
-                            score: score
+                            score: score,
+                            max: criterion.max_score,
+                            isPenalty: DataManager.isPenaltyCriterion(criterion)
                         };
                     }));
                     // Same rule as the judge's own screen: penalty criteria are
@@ -405,88 +461,127 @@ const SuperJudgeView = {
                 return a.student.name.localeCompare(b.student.name);
             });
 
-            // Add position tracking for top 3 students with allSubmitted === true
+            const maxTotal = orderedCriteria.reduce((sum, criterion) =>
+                DataManager.isPenaltyCriterion(criterion) ? sum : sum + Number(criterion.max_score || 0), 0);
+
+            // Rank on the students who are finished; anyone still waiting keeps a
+            // dash so the standings do not move around mid-round.
             let position = 0;
+            let lastAvg = null;
             const studentCards = studentsWithScores.map((studentData, index) => {
-                const { student, group, groupJudges, scoringJudges, excludedCount, absent,
+                const { student, scoringJudges, excludedCount, absent,
                         allSubmitted, totalScore, avgScore, judgeScores } = studentData;
-                
-                // Only assign positions to students with all submitted
-                let placeLabel = '';
-                if (allSubmitted) {
-                    position++;
-                    if (position === 1) {
-                        placeLabel = 'First Place';
-                    } else if (position === 2) {
-                        placeLabel = 'Second Place';
-                    } else if (position === 3) {
-                        placeLabel = 'Third Place';
+
+                let rank = '–';
+                let rankClass = '';
+                if (allSubmitted && !absent) {
+                    // ties share a place: 32.00 twice reads 2, 2, then 4
+                    if (lastAvg === null || Math.abs(avgScore - lastAvg) > 0.001) {
+                        position = index + 1;     // competition ranking: 1, 2, 2, 4
+                        lastAvg = avgScore;
                     }
+                    rank = String(position);
+                    if (position === 1) rankClass = 'is-gold';
+                    else if (position === 2) rankClass = 'is-silver';
+                    else if (position === 3) rankClass = 'is-bronze';
                 }
 
+                const initials = name => name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+                const submittedCount = judgeScores.filter(js => js.submitted).length;
+                const waiting = scoringJudges.length - submittedCount;
+                const pct = maxTotal > 0 ? Math.min(100, Math.round((avgScore / maxTotal) * 100)) : 0;
+
+                const status = absent
+                    ? '<span class="sj-pill is-absent">Absent</span>'
+                    : allSubmitted
+                        ? '<span class="sj-pill is-final">Final</span>'
+                        : '<span class="sj-pill is-wait">Awaiting</span>';
+
+                const scored = judgeScores.filter(js => !js.excluded && js.total !== null);
+                const spread = scored.length
+                    ? (() => {
+                        const totals = scored.map(js => js.total);
+                        const low = Math.min(...totals);
+                        const high = Math.max(...totals);
+                        return low === high ? 'All judges agree' : `Judges ${low}–${high}`;
+                    })()
+                    : '';
+
+                const sub = absent
+                    ? 'Excluded by every judge'
+                    : allSubmitted
+                        ? spread
+                        : waiting === 0
+                            ? 'Every judge is in'
+                            : `${waiting} ${waiting === 1 ? 'judge is' : 'judges are'} still scoring`;
+
+                const judgeBlocks = judgeScores.map(js => {
+                    if (js.excluded) {
+                        return `
+                            <div class="sj-judge is-out">
+                                <div class="sj-judge__head">
+                                    <span class="sj-judge__name">${js.judge.name}</span>
+                                    <span class="sj-pill is-absent">Excluded${js.exclusionReason ? ` · ${js.exclusionReason}` : ''}</span>
+                                </div>
+                            </div>`;
+                    }
+                    const chips = js.scores.map(s => {
+                        const has = s.score !== null && s.score !== undefined && s.score !== '';
+                        const value = has ? `${s.score}<small>/${s.max ?? '–'}</small>`
+                            : (s.isPenalty ? '<i>none</i>' : '—');
+                        return `
+                            <span class="sj-crit${s.isPenalty ? ' is-penalty' : ''}">
+                                <span class="sj-crit__n">${s.criterion}</span>
+                                <b class="sj-crit__v">${value}</b>
+                            </span>`;
+                    }).join('');
+
+                    return `
+                        <div class="sj-judge">
+                            <div class="sj-judge__head">
+                                <span class="sj-judge__name">${js.judge.name}</span>
+                                ${js.submitted ? '<span class="sj-pill is-final">Submitted</span>' : '<span class="sj-pill is-wait">Draft</span>'}
+                                <span class="sj-judge__total">${js.total}<small>/${maxTotal}</small></span>
+                                <button type="button" class="sj-edit"
+                                        title="${js.submitted ? 'Super judge override — changes a locked score' : 'Edit this judge draft'}"
+                                        onclick="SuperJudgeView.editJudgeScores('${student.id}', '${js.judge.id}')">${js.submitted ? 'Override' : 'Edit'}</button>
+                            </div>
+                            <div class="sj-crits">${chips}</div>
+                        </div>`;
+                }).join('');
+
                 return `
-                    <div class="student-score-card">
-                        <div class="student-score-header">
-                            ${placeLabel ? `<div class="place-label-centered">${placeLabel}</div>` : ''}
-                            <h3>${student.name}</h3>
-                            <span class="badge ${absent ? 'badge-warning' : allSubmitted ? 'badge-success' : 'badge-warning'}">
-                                ${absent ? 'Absent — excluded by every judge' : allSubmitted ? 'All Judges Submitted' : 'Pending'}
+                    <details class="sj-row${allSubmitted ? ' is-final' : ''}${absent ? ' is-absent' : ''}">
+                        <summary class="sj-row__sum">
+                            <span class="sj-pos${rankClass ? ' ' + rankClass : ' is-none'}">${rank}</span>
+                            <span class="sj-who">
+                                <span class="sj-av">${initials(student.name)}</span>
+                                <span class="sj-who__t">
+                                    <span class="sj-who__n">${student.name}</span>
+                                    <span class="sj-who__s">${sub}</span>
+                                </span>
                             </span>
+                            <span class="sj-score">
+                                ${absent ? '<span class="sj-score__n is-muted">—</span>'
+                                        : `<span class="sj-score__n">${avgScore.toFixed(2)}<small> /${maxTotal}</small></span>
+                                           <span class="sj-meter"><i style="width:${pct}%"></i></span>`}
+                            </span>
+                            <span class="sj-judges">${absent ? '—' : `${submittedCount} of ${scoringJudges.length}`}</span>
+                            <span class="sj-status">${status}</span>
+                        </summary>
+                        <div class="sj-break">
+                            ${judgeBlocks || '<p class="sj-break__empty">No judges are assigned to this grade yet.</p>'}
+                            <div class="sj-break__foot">
+                                <span>Total ${totalScore} · average ${avgScore.toFixed(2)} across ${scoringJudges.length}</span>
+                                ${excludedCount ? `<span class="sj-pill is-absent">${excludedCount} excluded</span>` : ''}
+                            </div>
                         </div>
-                        ${allSubmitted ? `
-                            <div class="score-summary">
-                                <div class="summary-item">
-                                    <strong>Total Score:</strong> ${totalScore}
-                                </div>
-                                <div class="summary-item">
-                                    <strong>Average Score:</strong> ${avgScore.toFixed(2)}
-                                </div>
-                                <div class="summary-item">
-                                    <strong>Number of Judges:</strong> ${scoringJudges.length}${excludedCount ? ` <span class="badge">${excludedCount} excluded</span>` : ''}
-                                </div>
-                            </div>
-                            <div class="judge-scores-detail">
-                                ${judgeScores.map(js => `
-                                    <div class="judge-score-item">
-                                        <div class="judge-score-header">
-                                            <strong>${js.judge.name}</strong>
-                                            ${js.excluded
-                                                ? `<span class="badge badge-warning" title="${(js.exclusionReason || '').replace(/"/g, '&quot;')}">Excluded${js.exclusionReason ? ` — ${js.exclusionReason}` : ''}</span>`
-                                                : `<span class="badge">Total: ${js.total}</span>
-                                            <button class="btn btn-sm btn-primary" onclick="SuperJudgeView.editJudgeScores('${student.id}', '${js.judge.id}')">Edit</button>`}
-                                        </div>
-                                        <div class="criterion-scores">
-                                            ${js.scores.map(s => {
-                                                // Check if criterion is penultimate (flexible matching)
-                                                const criterionLower = s.criterion.toLowerCase();
-                                                const isPenultimate = Array.from(penultimateCriteriaNames).some(name => 
-                                                    criterionLower.includes(name.toLowerCase()) || 
-                                                    name.toLowerCase().includes(criterionLower)
-                                                );
-                                                const redStyle = isPenultimate ? 'style="color: red;"' : '';
-                                                return `
-                                                <span class="criterion-badge" ${redStyle}>
-                                                    ${s.criterion}: ${s.score !== null ? s.score : 'N/A'}
-                                                </span>
-                                            `;
-                                            }).join('')}
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : `
-                            <div class="pending-message">
-                                ${absent
-                                    ? `<p>Every judge for this grade excluded this student — nothing to score.</p>`
-                                    : `<p>Waiting for all judges to submit scores.</p>
-                                <p>Submitted: ${judgeScores.filter(js => js.submitted).length} / ${scoringJudges.length}</p>`}
-                            </div>
-                        `}
-                    </div>
-                `;
+                    </details>`;
             });
 
             container.innerHTML = studentCards.join('');
+
+            this.renderSummary(studentsWithScores, maxTotal);
         } catch (error) {
             console.error('Error rendering students list:', error);
             container.innerHTML = '<p class="empty-message">Error loading students.</p>';
