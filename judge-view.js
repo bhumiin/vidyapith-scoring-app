@@ -360,7 +360,7 @@ const JudgeView = {
             nextOpen.classList.toggle('btn-disabled', nextOpen.disabled);
             nextOpen.title = nothingLeft
                 ? 'Every student in this grade is submitted'
-                : 'Open the next student who is not submitted yet';
+                : 'Open the next student';
         }
     },
 
