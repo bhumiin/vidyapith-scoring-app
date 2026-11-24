@@ -56,11 +56,19 @@ def check(label, cond, detail=''):
     print(f'  {"PASS" if cond else "FAIL"} {label}' + ('' if cond else f'  {detail}'))
 
 
-def login(user, role, password):
+def login(user, password, expect_role):
+    """Sign in with username + password only; the database decides the role.
+
+    expect_role is what the credential is supposed to hold — the point of the
+    check is that the answer comes back from Postgres, not from the caller.
+    """
     status, data = req('/rest/v1/rpc/login', 'POST',
-                       body={'p_username': user, 'p_role': role, 'p_password': password})
+                       body={'p_username': user, 'p_password': password})
     if status != 200 or not isinstance(data, dict) or not data.get('ok'):
         return None, f'status {status}: {str(data)[:160]}'
+    role = (data.get('user') or {}).get('role')
+    if role != expect_role:
+        return None, f'role came back as {role!r}, expected {expect_role!r}'
     return data, ''
 
 
@@ -90,12 +98,17 @@ def main():
     status, _ = req('/rest/v1/students?id=eq.00000000-0000-0000-0000-000000000000', 'DELETE')
     check('anon cannot delete students', status in (401, 403), f'got {status}')
 
+    status, data = req('/rest/v1/rpc/login', 'POST',
+                       body={'p_username': 'probe.role', 'p_role': 'judge', 'p_password': 'x'})
+    gone = status == 404 or (isinstance(data, dict) and data.get('code') == 'PGRST202')
+    check('the role cannot be passed to login (old signature is gone)', gone, f'got {status} {str(data)[:120]}')
+
     print('== logins ==')
-    judge, err = login(os.environ.get('TEST_JUDGE_USER'), 'judge', os.environ.get('TEST_JUDGE_PASS'))
+    judge, err = login(os.environ.get('TEST_JUDGE_USER'), os.environ.get('TEST_JUDGE_PASS'), 'judge')
     check('judge can log in', judge is not None, err)
-    sup, err2 = login(os.environ.get('TEST_SUPER_USER'), 'superjudge', os.environ.get('TEST_SUPER_PASS'))
+    sup, err2 = login(os.environ.get('TEST_SUPER_USER'), os.environ.get('TEST_SUPER_PASS'), 'superjudge')
     check('super judge can log in', sup is not None, err2)
-    adm, err3 = login(os.environ.get('TEST_ADMIN_USER'), 'admin', os.environ.get('TEST_ADMIN_PASS'))
+    adm, err3 = login(os.environ.get('TEST_ADMIN_USER'), os.environ.get('TEST_ADMIN_PASS'), 'admin')
     check('admin can log in', adm is not None, err3)
     if not (judge and sup and adm):
         return 1
