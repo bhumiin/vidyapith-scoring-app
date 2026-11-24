@@ -5036,3 +5036,130 @@ body[data-view="judge"] .judge-topics-display .topics-list li::before {
     content: "";
     margin: 0;
 }
+
+/* =========================================================================
+   JUDGE HEADER LAYOUT — name left, grade pills right, topic as a ribbon
+   The centred stack put the name, the grades and the topic on three different
+   lines with nothing to scan along. Now: logo centred, then one row with the
+   judge on the left and the grades on the right, then the topic as a full-width
+   ribbon at the foot of the card.
+   ========================================================================= */
+
+body[data-view="judge"] .view-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "logo  logo"
+        "name  grades"
+        "topic topic";
+    align-items: center;
+    gap: var(--space-3) var(--space-4);
+    padding: var(--space-4) var(--space-4) 0;
+    text-align: left;
+}
+
+body[data-view="judge"] .view-header .logo {
+    grid-area: logo;
+    justify-self: center;
+    margin: 0;
+}
+
+body[data-view="judge"] .judge-name-display {
+    grid-area: name;
+    justify-self: start;
+    margin: 0;
+    font-size: var(--text-xl);
+}
+
+body[data-view="judge"] .judge-grades-display {
+    grid-area: grades;
+    justify-self: end;
+    margin: 0;
+}
+
+/* the topic ribbon: full width of the card, centred, with room to breathe */
+body[data-view="judge"] .judge-topics-display {
+    grid-area: topic;
+    justify-self: stretch;          /* without this the ribbon shrinks to its text */
+    width: auto;
+    margin: 0 calc(-1 * var(--space-4));
+    padding: var(--space-4);
+    background: var(--color-brand-tint-soft);
+    border-top: var(--border-separator);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    text-align: center;
+}
+
+body[data-view="judge"] .judge-topics-display .topics-display {
+    gap: var(--space-2) var(--space-3);
+}
+
+body[data-view="judge"] .judge-topics-display .topics-title {
+    padding: 3px var(--space-2);
+    background: var(--color-brand-tint);
+    border-radius: var(--radius-xs);
+    color: var(--color-brand);
+    font-size: var(--text-2xs);
+    line-height: 1.2;
+}
+
+body[data-view="judge"] .judge-topics-display .topics-list li {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-ink);
+}
+
+@media (max-width: 760px) {
+    body[data-view="judge"] .view-header {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "logo"
+            "name"
+            "grades"
+            "topic";
+        text-align: center;
+    }
+
+    body[data-view="judge"] .judge-name-display,
+    body[data-view="judge"] .judge-grades-display {
+        justify-self: center;
+    }
+
+    body[data-view="judge"] .judge-topics-display .topics-list li {
+        font-size: var(--text-md);
+    }
+}
+/* the filter row was wrapping "Excluded" onto its own line in a 340px panel */
+body[data-view="judge"] .class-filters {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+}
+
+body[data-view="judge"] .class-filters::-webkit-scrollbar {
+    display: none;
+}
+
+/* five short chips in one row beat a sixth that wraps alone */
+body[data-view="judge"] .class-filters button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 4px 6px;
+    font-size: var(--text-2xs);
+    letter-spacing: 0;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* a touch more air in the ribbon */
+body[data-view="judge"] .judge-topics-display {
+    padding: var(--space-4) var(--space-4) calc(var(--space-4) + 2px);
+}
+
+body[data-view="judge"] .judge-topics-display .topics-list li {
+    line-height: var(--leading-snug);
+}
