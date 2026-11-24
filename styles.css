@@ -4871,7 +4871,7 @@ body[data-view="judge"] .view-header .logo,
 body[data-view="superjudge"] .view-header .logo,
 body[data-view="setup"] .view-header .logo {
     order: 0;
-    height: 72px;
+    height: 48px;            /* the artwork is cropped to its ink, so 48 is the whole mark */
     width: auto;
     margin: 0 auto;
     align-self: center;
@@ -4947,7 +4947,7 @@ body[data-view="login"] .login-logo {
 }
 
 body[data-view="login"] .login-logo img {
-    height: 96px;
+    height: 88px;
     margin: 0 auto;
 }
 
@@ -4961,7 +4961,7 @@ body[data-view="login"] .login-brand h1 {
     body[data-view="judge"] .view-header .logo,
     body[data-view="superjudge"] .view-header .logo,
     body[data-view="setup"] .view-header .logo {
-        height: 56px;
+        height: 36px;
     }
 
     body[data-view="login"] .login-logo img {
