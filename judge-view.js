@@ -132,40 +132,36 @@ const JudgeView = {
             
             // Reset selected grade
             this.selectedGradeId = null;
-            
+            this.judgeGradeCount = judgeGroups.length;
+
             if (judgeGroups.length === 0) {
                 groupsInfoElement.innerHTML = '<span class="grade-capsule">No grades assigned</span>';
                 if (topicsContainerElement) {
                     topicsContainerElement.innerHTML = '';
                 }
+                this.updateContentVisibility(false);
+            } else if (judgeGroups.length === 1) {
+                // Single grade: auto-select and show topics directly
+                this.selectedGradeId = judgeGroups[0].id;
+
+                groupsInfoElement.innerHTML = judgeGroups.map(g =>
+                    `<span class="grade-capsule selected" data-group-id="${g.id}">Grade ${g.name}</span>`
+                ).join('');
+
+                const topics = await DataManager.getTopicsByGroup(judgeGroups[0].id);
+                await this.renderTopics(topics, judgeGroups[0].id);
+                this.updateContentVisibility(true);
             } else {
-                const isMultipleGrades = judgeGroups.length > 1;
-                const clickableClass = isMultipleGrades ? 'clickable' : '';
-                
-                // Fetch and display topics for each grade
-                if (judgeGroups.length === 1) {
-                    // Single grade: auto-select and show topics directly
-                    this.selectedGradeId = judgeGroups[0].id;
-                    const selectedClass = 'selected';
-                    
-                    // Render grade capsule with selected class
-                    groupsInfoElement.innerHTML = judgeGroups.map(g => 
-                        `<span class="grade-capsule ${selectedClass}" data-group-id="${g.id}">Grade ${g.name}</span>`
-                    ).join('');
-                    
-                    const topics = await DataManager.getTopicsByGroup(judgeGroups[0].id);
-                    await this.renderTopics(topics, judgeGroups[0].id);
-                } else {
-                    // Multiple grades: render clickable capsules
-                    groupsInfoElement.innerHTML = judgeGroups.map(g => 
-                        `<span class="grade-capsule ${clickableClass}" data-group-id="${g.id}">Grade ${g.name}</span>`
-                    ).join('');
-                    
-                    // Show message to select a grade
-                    if (topicsContainerElement) {
-                        topicsContainerElement.innerHTML = '<p class="topic-message">Please select a grade to view topics and students</p>';
-                    }
+                // Several grades: only the grade pills until one is chosen
+                groupsInfoElement.innerHTML = judgeGroups.map(g =>
+                    `<span class="grade-capsule clickable" data-group-id="${g.id}">Grade ${g.name}</span>`
+                ).join('');
+
+                if (topicsContainerElement) {
+                    topicsContainerElement.innerHTML =
+                        '<p class="topic-message">Select a grade above to see its topics and students</p>';
                 }
+                this.updateContentVisibility(false);
             }
 
             // Get students for this judge
@@ -183,9 +179,27 @@ const JudgeView = {
         }
     },
 
+    /**
+     * The student selector, scoring area and scored list mean nothing until a
+     * grade is chosen, so they stay hidden for a judge who covers several grades.
+     */
+    updateContentVisibility(show) {
+        const content = document.querySelector('.judge-content');
+        if (content) {
+            content.style.display = show ? '' : 'none';
+        }
+    },
+
     async renderStudentSelect(students) {
         const select = document.getElementById('judge-student-select');
-        
+
+        // A judge covering several grades must pick one first — never list every
+        // student across grades in the dropdown.
+        if (!this.selectedGradeId && (this.judgeGradeCount || 0) > 1) {
+            select.innerHTML = '<option value="">-- Select a grade first --</option>';
+            return;
+        }
+
         // Preserve currently selected value
         const currentSelectedValue = select.value;
         
@@ -241,6 +255,7 @@ const JudgeView = {
     async selectGrade(groupId) {
         // Set selected grade first
         this.selectedGradeId = groupId;
+        this.updateContentVisibility(true);
         
         // Update visual state of grade capsules
         const groupsInfoElement = document.getElementById('judge-groups-info');
