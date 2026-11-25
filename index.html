@@ -268,6 +268,7 @@
                         </div>
                         <div class="scoring-actions">
                             <button id="next-open" class="btn btn-quiet" type="button" title="Open the next student">Next</button>
+                            <span id="save-state" class="save-state" hidden aria-live="polite"></span>
                             <button id="save-scores" class="btn btn-primary" type="button">Save draft</button>
                         </div>
                     </div>
@@ -385,6 +386,7 @@
     <!-- Application Scripts -->
     <script src="supabase-config.js"></script>
     <script src="supabase-service.js"></script>
+    <script src="write-queue.js"></script>
     <script src="data.js"></script>
     <script src="group-management.js"></script>
     <script src="ui.js"></script>

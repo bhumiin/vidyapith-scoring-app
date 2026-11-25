@@ -32,7 +32,10 @@ const App = {
             const result = await AuthManager.login(username, password);
             if (result.success) {
                 this.showLoginError('');
-                // Force page reload to clear all cached state and reinitialize views
+                // Force page reload to clear all cached state and reinitialize views.
+                // Queued writes live in localStorage, so this reload is safe and
+                // must not trip the unsaved-changes prompt.
+                window.__vpAllowUnload = true;
                 window.location.reload(true);
             } else {
                 this.showLoginError(result.error || 'Invalid credentials');

@@ -140,6 +140,40 @@ const JudgeView = {
         if (notesTextarea) {
             notesTextarea.addEventListener('input', (e) => {
                 this.currentNotes = e.target.value;
+                this.queueNote();
+            });
+        }
+
+        // Anything still on the device is a reason to pause, not a reason to
+        // lose it: the queue already lives in localStorage, this says so.
+        window.addEventListener('beforeunload', (e) => {
+            // The queue is already in localStorage, so a reload the app itself
+            // asked for (signing back in) loses nothing — only a person
+            // closing the tab with work still on the device gets warned.
+            if (window.__vpAllowUnload) return;
+            if (WriteQueue.pending() > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+        // And the page's last act is to try to send.
+        window.addEventListener('pagehide', () => { WriteQueue.flush(); });
+
+        // The badge follows the queue: taps, sends, retries, and the one
+        // state a timer cannot fix — a session that expired mid-event.
+        if (!this._queueSubscription) {
+            let blockedToast = null;
+            this._queueSubscription = WriteQueue.subscribe((state) => {
+                this.renderSaveState();
+                if (state.blocked && !blockedToast) {
+                    blockedToast = UI.toast(
+                        'Your session expired \u2014 sign in again to send the ' +
+                        state.pending + ' ' + (state.pending === 1 ? 'change' : 'changes') +
+                        ' you have saved.', { type: 'error', duration: 0 });
+                } else if (!state.blocked && blockedToast) {
+                    blockedToast.dismiss();
+                    blockedToast = null;
+                }
             });
         }
 
@@ -411,37 +445,27 @@ const JudgeView = {
         if (await DataManager.isSubmitted(studentId, user.id)) return 0;
         if (this.currentExcluded) return 0;
 
-        const criteria = this.currentCriteria || [];
-        const normalise = value => (value === '' || value === null || value === undefined) ? null : Number(value);
-        const writes = [];
-
-        for (const criterion of criteria) {
-            const next = normalise(this.currentScores[criterion.id]);
-            const before = normalise(this.savedScores[criterion.id]);
-            if (next === before) continue;
-
-            if (next === null) {
-                writes.push(SupabaseService.deleteScore(studentId, user.id, criterion.id));
-            } else {
-                writes.push(SupabaseService.setScore(studentId, user.id, criterion.id, next));
-            }
-        }
-
         const notesEl = document.getElementById('judge-notes-input');
-        const nextNotes = notesEl ? notesEl.value : this.currentNotes;
-        if (nextNotes !== (this.savedNotes || '')) {
-            writes.push(SupabaseService.setNote(studentId, user.id, nextNotes || ''));
+        if (notesEl) this.currentNotes = notesEl.value;
+
+        const queued = this.enqueueOpenRecord();
+        if (!queued && !WriteQueue.pending()) return 0;
+
+        // A failed send is not a lost draft any more: the values are queued
+        // on this device and go on their own, so moving to the next student
+        // (or the next grade) is always safe.
+        const drained = await WriteQueue.flush();
+        if (drained) {
+            // what the database now holds is what is on screen
+            this.savedScores = Object.assign({}, this.currentScores);
+            this.savedNotes = this.currentNotes;
+            await DataManager.refreshCache();
+        } else {
+            UI.toast('Saved on this device \u2014 it will send when you are back online.', { type: 'info' });
         }
 
-        if (!writes.length) return 0;
-
-        await Promise.all(writes);
-        await DataManager.refreshCache();
-
-        // what the database now holds is what is on screen
-        this.savedScores = Object.assign({}, this.currentScores);
-        this.savedNotes = nextNotes || '';
-        return writes.length;
+        this.renderSaveState();
+        return queued;
     },
 
     /**
@@ -553,6 +577,7 @@ const JudgeView = {
         this.savedNotes = '';
         document.getElementById('judge-scoring-section').style.display = 'none';
         document.getElementById('judge-no-student').style.display = '';
+        this.renderSaveState();
     },
 
     async selectGrade(groupId) {
@@ -642,8 +667,16 @@ const JudgeView = {
             return;
         }
 
+        this._selecting = true;
         try {
             this.currentStudentId = studentId;
+            // The panel still shows the previous student until this load
+            // finishes. Clear their scores first, so a save in this window can
+            // never diff against — or delete — another student's record.
+            this.currentScores = {};
+            this.savedScores = {};
+            this.currentNotes = '';
+            this.savedNotes = '';
             const students = await DataManager.getStudents();
             const student = students.find(s => s.id === studentId);
             const criteria = await DataManager.getCriteria();
@@ -700,6 +733,21 @@ const JudgeView = {
             this.currentNotes = existingNotes || '';
             this.savedScores = Object.assign({}, this.currentScores);
             this.savedNotes = this.currentNotes;
+
+            // Anything still on this device is newer than what the server
+            // has: show it, so a reload mid-student is not mistaken for lost
+            // scores. savedScores stays at the server's answer, so the badge
+            // still knows these values have not been sent.
+            WriteQueue.pendingFor(studentId, user.id).forEach(item => {
+                if (item.type === 'score') {
+                    this.currentScores[item.payload.criterionId] =
+                        (item.payload.value === null || item.payload.value === undefined)
+                            ? '' : item.payload.value;
+                } else if (item.type === 'note') {
+                    this.currentNotes = item.payload.text || '';
+                }
+            });
+
             const notesTextarea = document.getElementById('judge-notes-input');
             if (notesTextarea) {
                 notesTextarea.value = this.currentNotes;
@@ -895,9 +943,12 @@ const JudgeView = {
             this.updateButtonStates().catch(error => {
                 console.error('Error updating button states:', error);
             });
+            this.renderSaveState();
         } catch (error) {
             console.error('Error selecting student:', error);
             UI.toast('Error loading student. Please try again.', { type: 'error' });
+        } finally {
+            this._selecting = false;
         }
     },
 
@@ -933,7 +984,9 @@ const JudgeView = {
      * @param {number|null} value  null clears (and is the only choice on a penalty)
      */
     setScore(criterionId, value) {
-        if (!this.currentStudentId) return;
+        // The previous student's rows are still on screen while the next one
+        // loads: a tap in that window would be scored against the wrong name.
+        if (!this.currentStudentId || this._selecting) return;
 
         const criterion = (this.currentCriteria || []).find(c => c.id === criterionId);
         if (!criterion) {
@@ -959,9 +1012,120 @@ const JudgeView = {
         this.currentScores[criterionId] = next;
         this.paintScoreChips();
         this.calculateTotal();
+        this.queueScore(criterionId);
         this.updateButtonStates().catch(error => {
             console.error('Error updating button states:', error);
         });
+    },
+
+    /**
+     * One tap is one queued write. The network is WriteQueue's problem: the
+     * value is on this device the moment it is tapped, so a closed tab, a
+     * dropped tablet or a dead connection cannot take it back.
+     */
+    queueScore(criterionId) {
+        if (!this.currentStudentId || this.currentSubmitted || this.currentExcluded) return;
+        const session = AuthManager.getSession();
+        if (!session || !session.userId) return;
+        const raw = this.currentScores[criterionId];
+        WriteQueue.enqueue('score', {
+            studentId: this.currentStudentId,
+            judgeId: session.userId,
+            criterionId: criterionId,
+            value: (raw === '' || raw === null || raw === undefined) ? null : Number(raw)
+        });
+    },
+
+    queueNote() {
+        if (!this.currentStudentId || this.currentSubmitted || this.currentExcluded) return;
+        const session = AuthManager.getSession();
+        if (!session || !session.userId) return;
+        WriteQueue.enqueue('note', {
+            studentId: this.currentStudentId,
+            judgeId: session.userId,
+            text: this.currentNotes || ''
+        });
+    },
+
+    /**
+     * Queue every difference between the screen and the database for the
+     * open student — the taps already went in one by one, this catches a
+     * record opened in an older tab.
+     */
+    enqueueOpenRecord() {
+        const session = AuthManager.getSession();
+        if (!session || !session.userId || !this.currentStudentId) return 0;
+        const normalise = value => (value === '' || value === null || value === undefined) ? null : Number(value);
+        let queued = 0;
+
+        (this.currentCriteria || []).forEach(criterion => {
+            const next = normalise(this.currentScores[criterion.id]);
+            const before = normalise(this.savedScores[criterion.id]);
+            if (next === before) return;
+            WriteQueue.enqueue('score', {
+                studentId: this.currentStudentId,
+                judgeId: session.userId,
+                criterionId: criterion.id,
+                value: next
+            });
+            queued++;
+        });
+
+        const notes = this.currentNotes || '';
+        if (notes !== (this.savedNotes || '')) {
+            WriteQueue.enqueue('note', {
+                studentId: this.currentStudentId,
+                judgeId: session.userId,
+                text: notes
+            });
+            queued++;
+        }
+        return queued;
+    },
+
+    /**
+     * The badge beside Save draft: sending, waiting (with a count), or a
+     * short "Saved". Nothing else on the screen has to know the network
+     * exists.
+     */
+    renderSaveState() {
+        const el = document.getElementById('save-state');
+        if (!el) return;
+        const state = WriteQueue.state();
+        let cls = 'save-state';
+        let text = '';
+
+        if (state.status === 'sending') {
+            cls += ' save-state--sending';
+            text = 'Sending\u2026';
+        } else if (state.blocked) {
+            cls += ' save-state--blocked';
+            text = state.pending + ' not sent \u2014 sign in again';
+        } else if (state.pending > 0) {
+            cls += ' save-state--pending';
+            text = state.pending + ' not sent yet';
+        } else if (this._savedFlash) {
+            cls += ' save-state--saved';
+            text = 'Saved';
+        } else {
+            el.hidden = true;
+            el.textContent = '';   // no stale "Sending" under a hidden badge
+            return;
+        }
+
+        el.hidden = false;
+        el.className = cls;
+        el.textContent = text;
+    },
+
+    flashSaved() {
+        this._savedFlash = true;
+        clearTimeout(this._savedFlashTimer);
+        this._savedFlashTimer = setTimeout(() => {
+            this._savedFlash = false;
+            this.renderSaveState();
+        }, 2500);
+        this.renderSaveState();
     },
 
     // kept for anything still calling the old name
@@ -1089,6 +1253,10 @@ const JudgeView = {
 
         try {
             const user = await AuthManager.getCurrentUser();
+            if (!user) {
+                UI.toast('Please sign in again to save.', { type: 'error' });
+                return;
+            }
             const criteria = await DataManager.getCriteria();
 
             // Validate all required criteria are scored (excluding optional criteria: Reading Sentences and Overtime)
@@ -1140,52 +1308,30 @@ const JudgeView = {
                 return;
             }
 
-            // Save scores (only valid ones)
-            // Use input element data attributes for score ranges (same as validation)
-            for (const criterion of criteria) {
-                const score = this.currentScores[criterion.id];
-                if (score !== null && score !== undefined && score !== '') {
-                    const numScore = parseInt(score);
-                    const minScore = criterion.min_score != null ? criterion.min_score : null;
-                    const maxScore = criterion.max_score != null ? criterion.max_score : null;
-
-                    // Only save if score range is valid and score is within range
-                    if (minScore !== null && maxScore !== null && !isNaN(minScore) && !isNaN(maxScore)) {
-                        if (!isNaN(numScore) && numScore >= minScore && numScore <= maxScore) {
-                            await DataManager.setScore(this.currentStudentId, user.id, criterion.id, numScore);
-                        }
-                    } else {
-                        console.warn(`Cannot save score for criterion ${criterion.id}: score range not found`);
-                    }
-                }
-            }
-
-            // Save notes
+            // Everything on screen is already queued by the taps; enqueue the
+            // difference too so a record opened in an older tab cannot slip
+            // through, then send it and report on what actually landed.
             const notesTextarea = document.getElementById('judge-notes-input');
-            if (notesTextarea) {
-                this.currentNotes = notesTextarea.value || '';
-                await DataManager.setNote(this.currentStudentId, user.id, this.currentNotes);
+            if (notesTextarea) this.currentNotes = notesTextarea.value || '';
+            this.enqueueOpenRecord();
+
+            const drained = await WriteQueue.flush();
+            if (!drained) {
+                UI.toast('Saved on this device \u2014 it will send when you are back online.', { type: 'info' });
+                this.renderSaveState();
+                return;
             }
 
-            // A chip the judge cleared must not survive in the database
-            for (const criterion of criteria) {
-                const now = this.currentScores[criterion.id];
-                const before = this.savedScores[criterion.id];
-                const blank = now === null || now === undefined || now === '';
-                const wasSet = before !== null && before !== undefined && before !== '';
-                if (blank && wasSet && SupabaseService.deleteScore) {
-                    await SupabaseService.deleteScore(this.currentStudentId, user.id, criterion.id);
-                }
-            }
             this.savedScores = Object.assign({}, this.currentScores);
             this.savedNotes = this.currentNotes;
+            await DataManager.refreshCache();
 
             const runningTotal = document.getElementById('judge-total-score');
             const maxTotal = (runningTotal && runningTotal.dataset.max) || '40';
             UI.toast('Draft saved · ' + (runningTotal ? runningTotal.textContent : '0') + ' / ' + maxTotal,
                 { type: 'success' });
+            this.flashSaved();
             await this.renderClassList();
-            // updateSubmitAllButtonState is called inside renderScoredStudents
         } catch (error) {
             console.error('Error adding score:', error);
             UI.toast('Error adding score. Please try again.', { type: 'error' });

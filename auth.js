@@ -98,7 +98,12 @@ const AuthManager = {
             }
         } catch (error) {
             console.error('Error fetching current user:', error);
-            return null;
+            // The session already says who this is. A read that times out must
+            // not lock the judge out of the screen holding their scores: fall
+            // back to the stored identity and let the queue keep sending.
+            return session
+                ? { id: session.userId, name: session.name, username: session.username, role: session.role }
+                : null;
         }
 
         return null;

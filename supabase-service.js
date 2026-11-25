@@ -30,6 +30,28 @@ function currentToken() {
 }
 
 /**
+ * Every request gets a deadline. Venue wifi often accepts the packet and
+ * never answers, which would hang a screen forever; failing fast lets the
+ * write queue retry and lets the screens fall back to what they already hold.
+ */
+const REQUEST_TIMEOUT_MS = 10000;
+
+function timedFetch(input, init) {
+    // The browser knows when there is no network at all: say so at once
+    // instead of spending the timeout budget on it.
+    if (navigator.onLine === false) {
+        return Promise.reject(new TypeError('Failed to fetch: the device is offline'));
+    }
+    if (typeof AbortController === 'undefined' || typeof fetch !== 'function') {
+        return fetch(input, init);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const options = Object.assign({}, init, { signal: controller.signal });
+    return fetch(input, options).finally(() => clearTimeout(timer));
+}
+
+/**
  * Build a client. With a token, every request carries it and Postgres decides
  * what this user may read or write; without one, only login() is callable.
  */
@@ -49,7 +71,8 @@ function createSupabaseClient(token) {
             autoRefreshToken: false
         },
         global: {
-            headers: headers
+            headers: headers,
+            fetch: timedFetch
         }
     });
 }
@@ -708,9 +731,26 @@ const SupabaseService = {
 
             if (error) throw error;
             if (!data || data.length === 0) {
-                const locked = new Error('That score is locked - the student is already submitted.');
-                locked.code = 'SCORE_LOCKED';
-                throw locked;
+                // Without a usable token the delete was refused silently (RLS
+                // answers a DELETE with "0 rows", never an error) — say so
+                // rather than reporting a success that did not happen.
+                if (!currentToken()) {
+                    const expired = new Error('Your session has expired - sign in again to keep saving.');
+                    expired.code = 'PGRST301';
+                    throw expired;
+                }
+                // With a token, zero rows means one of two things and only the
+                // database knows which: the row is already gone (a retried
+                // delete), or RLS refused because the record is submitted.
+                // Treating the first as the second wedged the judge behind
+                // "staying here so nothing is lost" — ask before claiming a lock.
+                const submitted = await SupabaseService.isSubmitted(studentId, judgeId);
+                if (submitted) {
+                    const locked = new Error('That score is locked - the student is already submitted.');
+                    locked.code = 'SCORE_LOCKED';
+                    throw locked;
+                }
+                return true; // nothing to remove: the row is already gone
             }
             return true;
         } catch (error) {

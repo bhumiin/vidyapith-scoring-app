@@ -3078,6 +3078,59 @@ body[data-view="judge"] .stu-lock {
     text-transform: uppercase;
 }
 
+/* what is still on this device: beside the button that sends it */
+body[data-view="judge"] .save-state {
+    align-self: center;
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+body[data-view="judge"] .save-state--sending {
+    background: var(--color-brand-tint);
+    color: var(--color-brand-mid);
+}
+
+body[data-view="judge"] .save-state--pending {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+}
+
+body[data-view="judge"] .save-state--saved {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+body[data-view="judge"] .save-state--blocked {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+/* the badge is the point on a phone too — it shrinks, it never hides */
+@media (max-width: 560px) {
+    body[data-view="judge"] .save-state {
+        padding: 3px 6px;
+        letter-spacing: 0;
+        font-size: 9px;
+    }
+}
+
+/* the buttons keep their words; the badge is what gives way */
+body[data-view="judge"] .scoring-actions .btn {
+    white-space: nowrap;
+    flex: none;
+}
+
+body[data-view="judge"] .save-state {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 body[data-view="judge"] .score-chip:disabled {
     background: var(--color-line-soft);
     border-color: var(--color-line);
