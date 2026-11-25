@@ -412,6 +412,11 @@ const JudgeView = {
 
         await this.selectStudent(studentId);
         await this.renderClassList();
+        // same reason as in addScore: the roster just changed, so the button
+        // that depends on it has to be re-read
+        await this.updateSubmitAllButtonState().catch(error => {
+            console.error('Error updating Submit All button state:', error);
+        });
     },
 
     /** Move to the next student who is not saved yet, in list order. */
@@ -1332,6 +1337,10 @@ const JudgeView = {
                 { type: 'success' });
             this.flashSaved();
             await this.renderClassList();
+            // The comment that used to live here claimed renderScoredStudents
+            // did this. Nothing did, so Submit All stayed disabled with every
+            // draft saved until the grade was switched or the page reloaded.
+            await this.updateSubmitAllButtonState();
         } catch (error) {
             console.error('Error adding score:', error);
             UI.toast('Error adding score. Please try again.', { type: 'error' });

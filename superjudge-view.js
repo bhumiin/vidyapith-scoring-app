@@ -590,6 +590,11 @@ const SuperJudgeView = {
     },
 
     async editJudgeScores(studentId, judgeId) {
+        // One dialog at a time: a second one would carry the same id, and the
+        // save would then run against whichever element the browser finds first.
+        const alreadyOpen = document.getElementById('edit-scores-modal');
+        if (alreadyOpen) alreadyOpen.remove();
+
         this.currentEditingStudent = studentId;
         this.currentEditingJudge = judgeId;
         try {
@@ -597,10 +602,32 @@ const SuperJudgeView = {
             const judges = await DataManager.getJudges();
             const student = students.find(s => s.id === studentId);
             const judge = judges.find(j => j.id === judgeId);
+            if (!student || !judge) throw new Error('That student or judge is no longer on the list.');
             const criteria = await DataManager.getCriteria();
 
-            // Unlock scores first
-            await DataManager.unlockScores(studentId, judgeId);
+            // A submitted record is final until somebody says otherwise, so
+            // ask first: opening this dialog must not by itself turn a Final
+            // row back into Awaiting. The lock comes off only once the super
+            // judge has said yes, and it goes back on cancel or save.
+            this._editWasSubmitted = await DataManager.isSubmitted(studentId, judgeId);
+            this._unlockedForEdit = false;
+            if (this._editWasSubmitted) {
+                const confirmed = await UI.modal.confirm({
+                    title: `Unlock ${student.name}'s record?`,
+                    message: `${judge.name}'s scores for ${student.name} are submitted and locked. `
+                        + 'Unlocking lets you change them; the record locks again when you save, '
+                        + 'and Cancel puts the lock back without changing anything.',
+                    confirmLabel: 'Unlock and edit',
+                    cancelLabel: 'Cancel'
+                });
+                if (!confirmed) {
+                    this.currentEditingStudent = null;
+                    this.currentEditingJudge = null;
+                    return;
+                }
+                await DataManager.unlockScores(studentId, judgeId);
+                this._unlockedForEdit = true;
+            }
 
             // Organize criteria in the same order as Judge view
             const criteriaGroupMapping = {
@@ -728,6 +755,7 @@ const SuperJudgeView = {
             // Create modal for editing
             const modal = document.createElement('div');
             modal.className = 'modal';
+            modal.id = 'edit-scores-modal';
             
             // Load scores for criteria in order
             const scoreInputs = await Promise.all(orderedCriteria.map(async criterion => {
@@ -778,13 +806,16 @@ const SuperJudgeView = {
                 <div class="modal-content">
                     <div class="modal-header">
                         <h2>Edit Scores: ${student.name} - ${judge.name}</h2>
-                        <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
+                        <button class="modal-close" onclick="SuperJudgeView.closeEditModal()">×</button>
                     </div>
                     <div class="modal-body">
+                        <p class="modal-note">${this._editWasSubmitted
+                            ? 'Submitted record, unlocked for this edit. Save locks it again; Cancel re-locks it without changing anything.'
+                            : 'Draft. Saving keeps it a draft — the judge still sends it.'}</p>
                         ${scoreInputs.join('')}
                         <div class="modal-actions">
                             <button class="btn btn-primary" onclick="SuperJudgeView.saveEditScores()">Save</button>
-                            <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                            <button class="btn btn-secondary" onclick="SuperJudgeView.closeEditModal()">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -811,8 +842,9 @@ const SuperJudgeView = {
         const score = parseInt(value);
         
         if (isNaN(score) || score < minScore || score > maxScore) {
-            UI.toast(`Score must be between ${minScore} and ${maxScore}`, { type: 'error' });;
-            inputElement.value = '';
+            UI.toast(`Score must be between ${minScore} and ${maxScore}`, { type: 'error' });
+            // Put back what was there: a typo must not look like a cleared score.
+            inputElement.value = inputElement.dataset.original || '';
             return;
         }
     },
@@ -820,34 +852,94 @@ const SuperJudgeView = {
     async saveEditScores() {
         if (!this.currentEditingStudent || !this.currentEditingJudge) return;
 
+        const studentId = this.currentEditingStudent;
+        const judgeId = this.currentEditingJudge;
+        const modal = document.getElementById('edit-scores-modal');
+        if (!modal) return;
+
         try {
-            const criteria = await DataManager.getCriteria();
-            const modal = document.querySelector('.modal');
             const inputs = modal.querySelectorAll('.score-input');
 
             for (const input of inputs) {
                 const criterionId = input.dataset.criterionId;
+                const original = input.dataset.original || '';
                 const value = input.value;
-                // only write the criteria the super judge actually changed
-                if (value && value === input.dataset.original) continue;
-                if (value && value !== '') {
-                    const score = parseInt(value);
-                    const minScore = parseInt(input.min) || 1;
-                    const maxScore = parseInt(input.max) || 10;
-                    if (!isNaN(score) && score >= minScore && score <= maxScore) {
-                        await DataManager.setScore(this.currentEditingStudent, this.currentEditingJudge, criterionId, score);
+
+                // only write what actually changed
+                if (value === original) continue;
+
+                if (value === '') {
+                    // A cleared field clears the score, the way a cleared chip
+                    // does in the judge's own view — it is not silently kept.
+                    if (original !== '') {
+                        await SupabaseService.deleteScore(studentId, judgeId, criterionId);
                     }
+                    continue;
                 }
+
+                const score = parseInt(value);
+                const minScore = parseInt(input.min) || 1;
+                const maxScore = parseInt(input.max) || 10;
+                if (isNaN(score) || score < minScore || score > maxScore) {
+                    input.value = original;
+                    UI.toast(`Score must be between ${minScore} and ${maxScore}.`, { type: 'error' });
+                    return;
+                }
+                await DataManager.setScore(studentId, judgeId, criterionId, score);
             }
 
-            // Re-submit scores
-            await DataManager.submitScores(this.currentEditingStudent, this.currentEditingJudge);
+            // The lock goes back exactly as it was: a submitted record is
+            // submitted again, and a draft stays a draft for its judge to send.
+            // Opening an Edit on a draft must never lock it.
+            if (this._editWasSubmitted) {
+                await DataManager.submitScores(studentId, judgeId);
+            }
 
+            this._unlockedForEdit = false;
+            this._editWasSubmitted = false;
+            this.currentEditingStudent = null;
+            this.currentEditingJudge = null;
             modal.remove();
+            UI.toast('Scores saved.', { type: 'success' });
             await this.renderStudents();
         } catch (error) {
             console.error('Error saving edit scores:', error);
-            UI.toast('Error saving scores. Please try again.', { type: 'error' });;
+            // The modal stays open on purpose: the record may still be
+            // unlocked, and closing it is what puts the lock back.
+            const state = this._unlockedForEdit
+                ? 'the record is unlocked until you save or close this dialog'
+                : 'nothing was written';
+            UI.toast(`Could not save — ${state}. Fix the problem and try again, or close this dialog.`,
+                { type: 'error', duration: 0 });
+        }
+    },
+
+    /**
+     * Closing without saving puts the lock back where it was: an unlocked
+     * Final record becomes Final again, and nothing is claimed to have been
+     * saved. One path for Cancel, the × and a failed save.
+     */
+    async closeEditModal() {
+        const modal = document.getElementById('edit-scores-modal');
+        if (modal) modal.remove();
+
+        const wasUnlocked = this._unlockedForEdit;
+        const studentId = this.currentEditingStudent;
+        const judgeId = this.currentEditingJudge;
+        this._unlockedForEdit = false;
+        this._editWasSubmitted = false;
+        this.currentEditingStudent = null;
+        this.currentEditingJudge = null;
+
+        if (wasUnlocked && studentId && judgeId) {
+            try {
+                await DataManager.submitScores(studentId, judgeId);
+                UI.toast('Record re-locked — nothing was changed.', { type: 'info' });
+            } catch (error) {
+                console.error('Error re-locking scores:', error);
+                UI.toast('Could not re-lock that record — reopen it and save.', { type: 'error', duration: 0 });
+            }
+            await this.renderStudents();
         }
     },
 
