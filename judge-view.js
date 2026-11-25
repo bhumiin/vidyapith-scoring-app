@@ -297,7 +297,10 @@ const JudgeView = {
                 const hasScore = value => value !== null && value !== undefined && value !== '';
                 const scoredCount = criteria.filter(c => hasScore(byJudge[c.id])).length;
                 const required = criteria.filter(c => !DataManager.isPenaltyCriterion(c));
-                const complete = required.length > 0 && required.every(c => hasScore(byJudge[c.id]));
+                // Named, not just counted: the footer has to say which score is
+                // missing, not only that one is.
+                const missing = required.filter(c => !hasScore(byJudge[c.id])).map(c => c.name);
+                const complete = required.length > 0 && missing.length === 0;
                 const submitted = (submissions[student.id] || []).includes(user.id);
                 const excluded = Object.prototype.hasOwnProperty.call(exclusions, student.id);
                 const total = DataManager.totalForJudge(criteria, c => hasScore(byJudge[c.id]) ? byJudge[c.id] : null);
@@ -308,6 +311,8 @@ const JudgeView = {
                     complete: complete,
                     scored: scoredCount,
                     required: required.length,
+                    missing: missing,
+                    done: required.length - missing.length,
                     excluded: excluded,
                     reason: exclusions[student.id] || '',
                     // a submitted student is final, so it outranks a stray
@@ -345,6 +350,13 @@ const JudgeView = {
             container.innerHTML = '<p class="class-empty">No student matches.</p>';
         } else {
             const initials = name => name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+            // A draft can hold a total and still be short a criterion — say so
+            // on the row, so nobody has to open five students to find the gap.
+            const gapChip = row => {
+                if (row.status !== 'draft' || row.complete || !row.missing || !row.missing.length) return '';
+                const title = row.missing.map(n => n.replace(/"/g, '&quot;')).join(', ');
+                return `<i class="class-row__gap" title="Still missing: ${title}">${row.done}/${row.required}</i>`;
+            };
             const label = status => status === 'submitted' ? 'Submitted'
                 : status === 'excluded' ? 'Excluded'
                 : status === 'draft' ? 'Draft' : 'Not started';
@@ -356,7 +368,7 @@ const JudgeView = {
                         <span class="class-row__name">${row.name}</span>
                         <span class="class-row__status ${row.status}">${label(row.status)}</span>
                     </span>
-                    <span class="class-row__total">${row.status === 'todo' || row.status === 'excluded' ? '—' : row.total + '<small>/40</small>'}</span>
+                    <span class="class-row__total">${row.status === 'todo' || row.status === 'excluded' ? '—' : row.total + '<small>/40</small>'}${gapChip(row)}</span>
                 </button>
             `).join('');
         }
@@ -1609,10 +1621,46 @@ const JudgeView = {
                 : !allComplete
                     ? 'Save a draft for every student first, with a score on every criterion'
                     : `Submit ${scorable.length} ${scorable.length === 1 ? 'student' : 'students'}${excluded ? ` (${excluded} excluded)` : ''} — scores lock after this`;
+            this.renderSubmitNote(blocked ? scorable : []);
         } catch (error) {
             console.error('Error updating Submit All button state:', error);
             setDisabled(submitAllBtn, true);
+            this.renderSubmitNote([]);
         }
+    },
+
+    /**
+     * The line above Submit All while it is blocked: which student is short
+     * which score. The button's own tooltip only says "a score on every
+     * criterion", which does not say who — and that is what sends a judge
+     * opening five students one by one to find the gap.
+     */
+    renderSubmitNote(scorable) {
+        const note = document.getElementById('submit-all-note');
+        if (!note) return;
+
+        const short = (Array.isArray(scorable) ? scorable : [])
+            .filter(row => row.status === 'draft' || row.status === 'todo')
+            .filter(row => !row.complete);
+
+        if (!short.length) {
+            note.hidden = true;
+            note.textContent = '';
+            return;
+        }
+
+        const parts = short.slice(0, 2).map(row => {
+            if (row.status === 'todo') return `${row.name} has not started`;
+            const missing = row.missing || [];
+            if (missing.length === 1) return `${row.name} needs a score on ${missing[0]}`;
+            if (missing.length > 1) return `${row.name} needs ${missing.length} more scores`;
+            return `${row.name} is not complete`;
+        });
+        const rest = short.length - parts.length;
+        if (rest > 0) parts.push(`${rest} more ${rest === 1 ? 'student' : 'students'}`);
+
+        note.textContent = parts.join(' · ');
+        note.hidden = false;
     },
 
     /**
